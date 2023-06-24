@@ -862,6 +862,12 @@
 		thermal-governor = "step_wise";
 		wake-capable-sensor;
 		trips {
+			cpufreq_10_config: cpufreq-10-config {
+				temperature = <75000>;
+				hysteresis = <5000>;
+				type = "passive";
+			};
+
 			cpu10_config: cpu10-config {
 				temperature = <110000>;
 				hysteresis = <10000>;
@@ -870,6 +876,11 @@
 		};
 
 		cooling-maps {
+			cpufreq_cdev {
+				trip = <&cpufreq_10_config>;
+				cooling-device = <&cpu7_notify 1 1>;
+			};
+
 			cpu10_cdev {
 				trip = <&cpu10_config>;
 				cooling-device = <&cpu6_isolate 1 1>;
@@ -884,6 +895,12 @@
 		thermal-governor = "step_wise";
 		wake-capable-sensor;
 		trips {
+			cpufreq_11_config: cpufreq-11-config {
+				temperature = <75000>;
+				hysteresis = <5000>;
+				type = "passive";
+			};
+
 			cpu11_config: cpu11-config {
 				temperature = <110000>;
 				hysteresis = <10000>;
@@ -892,6 +909,11 @@
 		};
 
 		cooling-maps {
+			cpufreq_cdev {
+				trip = <&cpufreq_11_config>;
+				cooling-device = <&cpu7_notify 1 1>;
+			};
+
 			cpu11_cdev {
 				trip = <&cpu11_config>;
 				cooling-device = <&cpu6_isolate 1 1>;
@@ -906,6 +928,12 @@
 		thermal-governor = "step_wise";
 		wake-capable-sensor;
 		trips {
+			cpufreq_12_config: cpufreq-12-config {
+				temperature = <75000>;
+				hysteresis = <5000>;
+				type = "passive";
+			};
+
 			cpu12_config: cpu12-config {
 				temperature = <110000>;
 				hysteresis = <10000>;
@@ -914,6 +942,11 @@
 		};
 
 		cooling-maps {
+			cpufreq_cdev {
+				trip = <&cpufreq_12_config>;
+				cooling-device = <&cpu7_notify 1 1>;
+			};
+
 			cpu12_cdev {
 				trip = <&cpu12_config>;
 				cooling-device = <&cpu7_isolate 1 1>;
@@ -928,6 +961,12 @@
 		thermal-governor = "step_wise";
 		wake-capable-sensor;
 		trips {
+			cpufreq_13_config: cpufreq-13-config {
+				temperature = <75000>;
+				hysteresis = <5000>;
+				type = "passive";
+			};
+
 			cpu13_config: cpu13-config {
 				temperature = <110000>;
 				hysteresis = <10000>;
@@ -936,6 +975,11 @@
 		};
 
 		cooling-maps {
+			cpufreq_cdev {
+				trip = <&cpufreq_13_config>;
+				cooling-device = <&cpu7_notify 1 1>;
+			};
+
 			cpu13_cdev {
 				trip = <&cpu13_config>;
 				cooling-device = <&cpu7_isolate 1 1>;
