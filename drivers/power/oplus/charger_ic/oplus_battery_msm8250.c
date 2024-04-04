@@ -13800,6 +13800,8 @@ static int smb5_batt_get_prop(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CYCLE_COUNT:
 		rc = smblib_get_prop_from_bms(chg,
 				POWER_SUPPLY_PROP_CYCLE_COUNT, val);
+				if (g_oplus_chip)
+						val->intval = g_oplus_chip->batt_cc;
 		break;
 	case POWER_SUPPLY_PROP_RECHARGE_SOC:
 		val->intval = chg->auto_recharge_soc;
