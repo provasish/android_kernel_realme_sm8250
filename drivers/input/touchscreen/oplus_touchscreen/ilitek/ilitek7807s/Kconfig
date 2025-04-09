@@ -1,7 +1,7 @@
 
 config TOUCHPANEL_ILITEK_ILITEK7807S
 #	default y
-	bool "TP ilitek ilitek7807s IC enable or not for  OPLUS"
+	tristate "TP ilitek ilitek7807s IC enable or not for  OPLUS"
 	---help---
 	say Y to enable driver for Touchpanel using ilitek ilitek7807s
 

@@ -13,6 +13,7 @@
 #include <linux/notifier.h>
 #endif
 #include "../sec_common.h"
+#include "../../touchpanel_prevention.h"
 
 /*********PART2:Define Area**********************/
 #define GESTURE_DOUBLECLICK                     0x00
@@ -32,6 +33,21 @@
 #define GESTURE_S                               0x0F
 #define GESTURE_EARSENSE                        0x0E
 
+#define GESTURE_DOUBLECLICK_BIT                 8
+#define GESTURE_UP_V_BIT                        9
+#define GESTURE_DOWN_V_BIT                      10
+#define GESTURE_LEFT_V_BIT                      11
+#define GESTURE_RIGHT_V_BIT                     12
+#define GESTURE_O_BIT                           13
+#define GESTURE_UP_BIT                          14
+#define GESTURE_DOWN_BIT                        15
+#define GESTURE_LEFT_BIT                        0
+#define GESTURE_RIGHT_BIT                       1
+#define GESTURE_M_BIT                           2
+#define GESTURE_W_BIT                           3
+#define GESTURE_DOUBLE_LINE_BIT                 GESTURE_DOWN_BIT
+#define GESTURE_SINGLE_TAP_BIT                  5
+#define GESTURE_S_BIT                           6
 #define RESET_TO_NORMAL_TIME                    (70)
 #define SEC_EVENT_BUFF_SIZE                     8
 #define MAX_EVENT_COUNT                         32
@@ -298,6 +314,8 @@ struct chip_data_s6sy791 {
 	bool                            old_firmware_flag_check;
 	bool oos_lcd_tp_refresh_support;
 	bool oos_game_switch_support;
+	int gesture_state;
+	bool black_gesture_indep;
 #ifdef CONFIG_OPLUS_TP_APK
 
     bool lock_point_status;
@@ -312,4 +330,8 @@ struct chip_data_s6sy791 {
 #endif //end of CONFIG_OPLUS_TP_APK
 };
 
+struct sec_support_grip_zone {
+    char                            name[GRIP_TAG_SIZE];
+    int                             (*handle_func) (struct grip_zone_area *grip_zone, bool enable);
+};
 #endif
