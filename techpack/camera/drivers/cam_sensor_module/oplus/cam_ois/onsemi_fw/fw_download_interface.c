@@ -11,12 +11,7 @@
 
 extern unsigned char SelectDownload(uint8_t GyroSelect, uint8_t ActSelect, uint8_t MasterSlave, uint8_t FWType);
 extern uint8_t FlashDownload128( uint8_t ModuleVendor, uint8_t ActVer, uint8_t MasterSlave, uint8_t FWType);
-extern uint8_t	LoadUserAreaToPM( void );
-extern uint8_t	RdBurstUareaFromPm( uint32_t UlAddress, uint8_t *PucData , uint8_t UcLength , uint8_t mode );
 extern uint8_t	RdSingleUareaFromPm( uint32_t UlAddress, uint8_t *PucData , uint8_t UcLength , uint8_t mode );
-extern uint8_t	WrUareaToPm( uint32_t UlAddress, uint8_t *PucData , uint8_t UcLength , uint8_t mode );
-extern uint8_t	WrUareaToPm( uint32_t UlAddress, uint8_t *PucData , uint8_t UcLength , uint8_t mode );
-extern uint8_t	WrUareaToFlash(void);
 
 #define MAX_DATA_NUM 64
 
@@ -1962,55 +1957,3 @@ void CheckOISfwVersion(void) {
 	CAM_INFO(CAM_OIS, "OIS Version 0X8004 = 0x%0x", temp);
 	return;
 }
-
-#define MAX_EEPROM_PACK_SIZE 252
-#define EEPROM_UNIT_SIZE 4
-
-void WriteEEpromData(struct cam_write_eeprom_t *cam_write_eeprom) {
-	UINT8 mdata[MAX_EEPROM_PACK_SIZE];
-	UINT32 i = 0;
-	UINT32 addr_offset = 0x00;
-	memset(mdata, 0xFF, MAX_EEPROM_PACK_SIZE);
-	LoadUserAreaToPM();
-
-	/*
-	for (i = 0; i < (cam_write_eeprom->calibDataSize / MAX_EEPROM_PACK_SIZE); i++) {
-		RdBurstUareaFromPm((cam_write_eeprom->baseAddr
-			+ (i * MAX_EEPROM_PACK_SIZE / EEPROM_UNIT_SIZE)),
-			mdata, MAX_EEPROM_PACK_SIZE, 0);
-	}
-
-	addr_offset = cam_write_eeprom->baseAddr + (i * MAX_EEPROM_PACK_SIZE);
-	RdBurstUareaFromPm(addr_offset, mdata,
-		(cam_write_eeprom->calibDataSize % MAX_EEPROM_PACK_SIZE), 0);
-	*/
-	CAM_ERR(CAM_OIS, "entry write eeprom!!!");
-	for (i = 0; i < (cam_write_eeprom->calibDataSize / MAX_EEPROM_PACK_SIZE); i++) {
-		WrUareaToPm((cam_write_eeprom->baseAddr
-			+ (i * MAX_EEPROM_PACK_SIZE / EEPROM_UNIT_SIZE)),
-			&cam_write_eeprom->calibData[0], MAX_EEPROM_PACK_SIZE, 0);
-	}
-	addr_offset = cam_write_eeprom->baseAddr + (i * MAX_EEPROM_PACK_SIZE);
-	WrUareaToPm(addr_offset, &cam_write_eeprom->calibData[i*MAX_EEPROM_PACK_SIZE],
-		(cam_write_eeprom->calibDataSize % MAX_EEPROM_PACK_SIZE), 0);
-
-	WrUareaToFlash();
-}
-
-void ReadEEpromData(struct cam_write_eeprom_t *cam_write_eeprom) {
-	UINT8 mdata[MAX_EEPROM_PACK_SIZE];
-	UINT32 i = 0;
-	UINT32 addr_offset = 0x00;
-	cam_write_eeprom->calibDataSize;
-	LoadUserAreaToPM();
-	for (i = 0; i < (cam_write_eeprom->calibDataSize / MAX_EEPROM_PACK_SIZE); i++) {
-		RdBurstUareaFromPm((cam_write_eeprom->baseAddr
-			+ (i * MAX_EEPROM_PACK_SIZE / EEPROM_UNIT_SIZE)),
-			mdata, MAX_EEPROM_PACK_SIZE, 0);
-	}
-	addr_offset = cam_write_eeprom->baseAddr + (i * MAX_EEPROM_PACK_SIZE);
-
-	RdBurstUareaFromPm(addr_offset, mdata,
-		(cam_write_eeprom->calibDataSize % MAX_EEPROM_PACK_SIZE), 0);
-}
-
