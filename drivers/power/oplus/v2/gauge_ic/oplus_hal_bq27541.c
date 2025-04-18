@@ -1260,8 +1260,8 @@ static int zy0603_afi_param_update(struct chip_bq27541 *chip)
 	return 0;
 }
 
-#define OPLUS_AFI_UPDATE_INTERVAL_SEC 		5
-#define OPLUS_AFI_UPDATE_INTERVAL	round_jiffies_relative(msecs_to_jiffies(OPLUS_AFI_UPDATE_INTERVAL_SEC*1000))
+#define OPPO_AFI_UPDATE_INTERVAL_SEC 		5
+#define OPPO_AFI_UPDATE_INTERVAL	round_jiffies_relative(msecs_to_jiffies(OPPO_AFI_UPDATE_INTERVAL_SEC*1000))
 int oplus_vooc_get_vooc_by_normal_path(void)
 {
 	int vooc_by_normal = 0;

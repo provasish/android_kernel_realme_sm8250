@@ -78,9 +78,27 @@ int __attribute__((weak)) oplus_adsp_voocphy_reset_again(void)
 	return 0;
 }
 
+int __attribute__((weak)) oplus_adsp_force_svooc(bool enable)
+{
+	return 0;
+}
+
+int __attribute__((weak)) oplus_adsp_voocphy_get_enable(void)
+{
+	return 0;
+}
+
+int __attribute__((weak)) oplus_adsp_batt_curve_current(void)
+{
+	return -ENOMEM;
+}
+
 static struct oplus_voocphy_operations oplus_adsp_voocphy_ops = {
 	.adsp_voocphy_enable = oplus_adsp_voocphy_enable,
 	.adsp_voocphy_reset_again = oplus_adsp_voocphy_reset_again,
+	.adsp_batt_curve_current = oplus_adsp_batt_curve_current,
+	.adsp_force_svooc = oplus_adsp_force_svooc,
+	.get_adsp_voocphy_enable = oplus_adsp_voocphy_get_enable,
 };
 
 #define VOLTAGE_2000MV   2000
@@ -212,6 +230,7 @@ void oplus_adsp_voocphy_handle_status(struct power_supply *psy, int intval)
 		chip->fastchg_ing = false;
 		chip->btb_temp_over = false;
 		chip->fast_chg_type = ((intval >> 8) & 0x7F) ;
+		chip->last_fast_chg_type = chip->fast_chg_type;
 		oplus_adsp_voocphy_handle_track_status(chip, intval);
 		printk(KERN_ERR "!!![adsp_voocphy] fastchg start: [%d], adapter version: [0x%0x]\n",
 			chip->fastchg_start, chip->fast_chg_type);
@@ -224,6 +243,7 @@ void oplus_adsp_voocphy_handle_status(struct power_supply *psy, int intval)
 		chip->fastchg_to_normal = false;
 		chip->fastchg_ing = false;
 		chip->fast_chg_type = ((intval >> 8) & 0x7F);
+		chip->last_fast_chg_type = chip->fast_chg_type;
 		oplus_adsp_voocphy_handle_track_status(chip, intval);
 		printk(KERN_ERR "!!![adsp_voocphy] fastchg dummy start: [%d], adapter version: [0x%0x]\n",
 				chip->fastchg_dummy_start, chip->fast_chg_type);

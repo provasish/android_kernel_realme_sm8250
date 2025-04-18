@@ -93,6 +93,15 @@ unsigned int __attribute__((weak)) get_PCB_Version(void)
 {
 	return EVT2 + 1;
 }
+
+static inline void do_gettimeofday(struct timeval *tv)
+{
+        struct timespec64 now;
+
+        ktime_get_real_ts64(&now);
+        tv->tv_sec = now.tv_sec;
+        tv->tv_usec = now.tv_nsec/1000;
+}
 #endif
 
 static DEFINE_MUTEX(p9418_i2c_access);
@@ -249,7 +258,7 @@ void p9418_check_point_function(struct work_struct *work)
 	do {
 		msleep(500);
 		cnt++;
-		if (cnt > 20) { /* 10s get ble addr time out*/
+		if (cnt > 10) { /* 5s get ble addr time out*/
 			g_ble_timeout_cnt++;
 			chg_err("check point update ble addr get timeout n");
 			break;
@@ -673,7 +682,7 @@ static int p9418_MTP(struct oplus_p9418_ic *chip, unsigned char *fw_buf, int fw_
 	/* disable power P9415 */
 	chg_err("<IDT UPDATE> Disable power P9415.\n");
 	p9418_power_enable(chip, false);
-	msleep(3000);
+	msleep(5000);
 
 	/* power P9415 again */
 	chg_err("<IDT UPDATE> Power P9415 again.\n");
@@ -926,6 +935,8 @@ static int oplus_wpc_chg_parse_chg_dt(struct oplus_p9418_ic *chip)
 
 void update_powerdown_info(struct oplus_p9418_ic *chip, uint8_t type)
 {
+	struct timeval now_time;
+
 	if (type >= PEN_OFF_REASON_MAX) {
 		chg_err("update power type error:%d.\n", type);
 		return;
@@ -937,7 +948,8 @@ void update_powerdown_info(struct oplus_p9418_ic *chip, uint8_t type)
 
 	chip->power_disable_reason = type;
 	chip->power_disable_times[type]++;
-	chip->charger_done_time = (ktime_to_ms(ktime_get()) - chip->tx_start_time)/MIN_TO_MS;
+	do_gettimeofday(&now_time);
+	chip->charger_done_time = (now_time.tv_sec * 1000 + now_time.tv_usec / 1000 - chip->tx_start_time)/MIN_TO_MS;
 }
 
 void p9418_ept_type_detect_func(struct oplus_p9418_ic *chip)
@@ -1036,6 +1048,7 @@ static void p9418_check_private_flag(struct oplus_p9418_ic *chip)
 static void p9418_commu_data_process(struct oplus_p9418_ic *chip)
 {
 	int rc = 0;
+	struct timeval now_time;
 
 	rc = p9418_read_reg(chip, P9418_REG_INT_FLAG, chip->int_flag_data, 4);
 	if (rc) {
@@ -1046,7 +1059,8 @@ static void p9418_commu_data_process(struct oplus_p9418_ic *chip)
 	if (chip->int_flag_data[1] & P9418_INT_FLAG_BLE_ADDR) {
 		if (!chip->ble_mac_addr) {
 			p9418_set_ble_addr(chip);
-			chip->upto_ble_time = ktime_to_ms(ktime_get()) - chip->tx_start_time;
+			do_gettimeofday(&now_time);
+			chip->upto_ble_time = now_time.tv_sec * 1000 + now_time.tv_usec / 1000 - chip->tx_start_time;
 			chg_err("GET_BLE_ADDR.(%d)\n", chip->upto_ble_time);
 			if (p9418_valid_check(chip)) {
 				if (PEN_REASON_RECHARGE != chip->power_enable_reason) {
@@ -1485,9 +1499,26 @@ void p9418_timer_inhall_function(struct work_struct *work)
 	return;
 }
 
+void power_expired_do_check(struct oplus_p9418_ic *chip)
+{
+	struct timeval now_time;
+	u64 time_offset = 0;
+
+	if (chip->is_power_on) {
+		do_gettimeofday(&now_time);
+		time_offset = now_time.tv_sec * 1000 + now_time.tv_usec / 1000 - chip->tx_start_time;
+		chg_err("%s:time_offset(%lld).\n", __func__, time_offset);
+		if ((time_offset/MIN_TO_MS) >= chip->power_expired_time) {
+			p9418_disable_tx_power(chip);
+			update_powerdown_info(chip, PEN_REASON_CHARGE_TIMEOUT);
+		}
+	}
+
+	return;
+}
+
 void power_expired_check_func(struct work_struct *work)
 {
-	u64 time_offset = 0;
 	struct delayed_work *dwork = to_delayed_work(work);
 	struct oplus_p9418_ic *chip = container_of(dwork, struct oplus_p9418_ic, power_check_work);
 
@@ -1500,14 +1531,7 @@ void power_expired_check_func(struct work_struct *work)
 	mutex_lock(&chip->flow_mutex);
 
 	chg_err("%s:time_offset check.\n", __func__);
-	if (chip->is_power_on) {
-		time_offset = ktime_to_ms(ktime_get()) - chip->tx_start_time;
-		chg_err("%s:time_offset(%lld).\n", __func__, time_offset);
-		if ((time_offset/MIN_TO_MS) >= chip->power_expired_time) {
-			p9418_disable_tx_power(chip);
-			update_powerdown_info(chip, PEN_REASON_CHARGE_TIMEOUT);
-		}
-	}
+	power_expired_do_check(chip);
 
 	mutex_unlock(&chip->flow_mutex);
 	__pm_relax(chip->bus_wakelock);
@@ -1517,6 +1541,8 @@ void power_expired_check_func(struct work_struct *work)
 
 static void p9418_do_switch(struct oplus_p9418_ic *chip, uint8_t status)
 {
+	struct timeval now_time;
+
 	if (!chip) {
 		return;
 	}
@@ -1527,7 +1553,8 @@ static void p9418_do_switch(struct oplus_p9418_ic *chip, uint8_t status)
 		p9418_set_protect_parameter(chip);
 		p9418_set_tx_mode(1);
 		chip->power_enable_reason = PEN_REASON_NEAR;
-		chip->tx_start_time = ktime_to_ms(ktime_get());
+		do_gettimeofday(&now_time);
+		chip->tx_start_time = now_time.tv_sec * 1000 + now_time.tv_usec / 1000;
 		schedule_work(&idt_timer_work);
 		schedule_delayed_work(&chip->power_check_work, \
 						round_jiffies_relative(msecs_to_jiffies(chip->power_expired_time * MIN_TO_MS)));
@@ -1599,6 +1626,7 @@ static void p9418_power_onoff_switch(int value)
 
 static void p9418_enable_func(struct work_struct *work)
 {
+	struct timeval now_time;
 	struct oplus_p9418_ic *chip = container_of(work, struct oplus_p9418_ic, power_enable_work);
 
 	if(!chip) {
@@ -1624,7 +1652,8 @@ static void p9418_enable_func(struct work_struct *work)
 	p9418_set_tx_mode(1);
 	chip->power_enable_times++;
 	chip->power_enable_reason = PEN_REASON_RECHARGE;
-	chip->tx_start_time = ktime_to_ms(ktime_get());
+	do_gettimeofday(&now_time);
+	chip->tx_start_time = now_time.tv_sec * 1000 + now_time.tv_usec / 1000;
 	schedule_work(&idt_timer_work);
 	cancel_delayed_work(&chip->power_check_work);
 	schedule_delayed_work(&chip->power_check_work, \
@@ -2338,6 +2367,7 @@ static int p9418_pm_resume(struct device *dev)
 		chip->i2c_ready = true;
 		chg_err("p9418_pm_resume.\n");
 		wake_up_interruptible(&i2c_waiter);
+		power_expired_do_check(chip);
 	}
 
 	return 0;

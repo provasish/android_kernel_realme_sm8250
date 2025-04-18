@@ -424,15 +424,18 @@ static void handle_bcc_read_buffer(struct battery_chg_dev *bcdev,
 	bcdev->bcc_read_buffer_dump.data_buffer[8] = DIV_ROUND_CLOSEST((int)bcdev->bcc_read_buffer_dump.data_buffer[8], 1000);
 	bcdev->bcc_read_buffer_dump.data_buffer[16] = oplus_chg_get_bcc_curr_done_status();
 
+	bcdev->bcc_read_buffer_dump.data_buffer[18] = 0;
+
 	chg_err("%s : ----dod0_1[%d], dod0_2[%d], dod0_passed_q[%d], qmax_1[%d], qmax_2[%d], qmax_passed_q[%d] \
 		voltage_cell1[%d], temperature[%d], batt_current[%d], max_current[%d], min_current[%d], voltage_cell2[%d], \
-		soc_ext_1[%d], soc_ext_2[%d], atl_last_geat_current[%d], charging_flag[%d], bcc_curr_done[%d]", __func__,
+		soc_ext_1[%d], soc_ext_2[%d], atl_last_geat_current[%d], charging_flag[%d], bcc_curr_done[%d], guage[%d], batt_type[%d]", __func__,
 		bcdev->bcc_read_buffer_dump.data_buffer[0], bcdev->bcc_read_buffer_dump.data_buffer[1],bcdev->bcc_read_buffer_dump.data_buffer[2],
 		bcdev->bcc_read_buffer_dump.data_buffer[3], bcdev->bcc_read_buffer_dump.data_buffer[4], bcdev->bcc_read_buffer_dump.data_buffer[5],
 		bcdev->bcc_read_buffer_dump.data_buffer[6], bcdev->bcc_read_buffer_dump.data_buffer[7], bcdev->bcc_read_buffer_dump.data_buffer[8],
 		bcdev->bcc_read_buffer_dump.data_buffer[9], bcdev->bcc_read_buffer_dump.data_buffer[10], bcdev->bcc_read_buffer_dump.data_buffer[11],
 		bcdev->bcc_read_buffer_dump.data_buffer[12], bcdev->bcc_read_buffer_dump.data_buffer[13], bcdev->bcc_read_buffer_dump.data_buffer[14],
-		bcdev->bcc_read_buffer_dump.data_buffer[15], bcdev->bcc_read_buffer_dump.data_buffer[16]);
+		bcdev->bcc_read_buffer_dump.data_buffer[15], bcdev->bcc_read_buffer_dump.data_buffer[16], bcdev->bcc_read_buffer_dump.data_buffer[17],
+		bcdev->bcc_read_buffer_dump.data_buffer[18]);
 	complete(&bcdev->bcc_read_ack);
 }
 
@@ -451,7 +454,7 @@ void oplus_get_props_from_adsp_by_buffer(void)
 }
 
 #define BCC_SET_DEBUG_PARMS 1
-#define BCC_PARMS_COUNT 17
+#define BCC_PARMS_COUNT 19
 #define BCC_PAGE_SIZE 256
 #define BCC_N_DEBUG 0
 #define BCC_Y_DEBUG 1
@@ -1250,7 +1253,7 @@ static void oplus_adsp_voocphy_enable_check_func(struct work_struct *work)
 #ifdef OPLUS_FEATURE_CHG_BASIC
 static void oplus_wait_wired_charge_on_work(struct work_struct *work)
 {
-	chg_err("[OPLUS_CHG][%s]<~WPC~> wait_wired_charge_on\n", __func__);
+	chg_err("[OPPO_CHG][%s]<~WPC~> wait_wired_charge_on\n", __func__);
 #if 0
 	oplus_wpc_set_wrx_en_value(0);
 	oplus_wpc_set_wls_pg_value(1);
@@ -1289,7 +1292,7 @@ static void oplus_switch_to_wired_charge(struct battery_chg_dev *bcdev)
 static void oplus_wait_wired_charge_off_work(struct work_struct *work)
 {
 #if 0
-	chg_err("[OPLUS_CHG][%s]<~WPC~> wait_wired_charge_off\n", __func__);
+	chg_err("[OPPO_CHG][%s]<~WPC~> wait_wired_charge_off\n", __func__);
 	oplus_wpc_dis_wireless_chg(0);
 	oplus_wpc_set_rtx_function_prepare();
 	oplus_wpc_set_rtx_function(true);
@@ -4009,7 +4012,7 @@ static void oplus_vchg_trig_irq_init(struct battery_chg_dev *bcdev)
 	}
 
 	bcdev->vchg_trig_irq = gpio_to_irq(bcdev->oplus_custom_gpio.vchg_trig_gpio);
-	chg_err("[OPLUS_CHG][%s]: vchg_trig_irq[%d]!\n", __func__, bcdev->vchg_trig_irq);
+	chg_err("[OPPO_CHG][%s]: vchg_trig_irq[%d]!\n", __func__, bcdev->vchg_trig_irq);
 }
 
 #define VCHG_TRIG_DELAY_MS	50
@@ -4018,7 +4021,7 @@ irqreturn_t oplus_vchg_trig_change_handler(int irq, void *data)
 	struct battery_chg_dev *bcdev = data;
 
 	cancel_delayed_work_sync(&bcdev->vchg_trig_work);
-	chg_err("[OPLUS_CHG][%s]: scheduling vchg_trig work!\n", __func__);
+	chg_err("[OPPO_CHG][%s]: scheduling vchg_trig work!\n", __func__);
 	schedule_delayed_work(&bcdev->vchg_trig_work, msecs_to_jiffies(VCHG_TRIG_DELAY_MS));
 
 	return IRQ_HANDLED;
@@ -5967,7 +5970,7 @@ static int oplus_usbtemp_monitor_main_new_method(void *data)
 	struct timespec curr_range_change_first_time;
 	struct timespec curr_range_change_last_time;
 	bool usbtemp_first_time_in_curr_range = false;
-	static int current_read_count = 0;
+	static current_read_count = 0;
 
 	pr_err("[oplus_usbtemp_monitor_main_new_method]:run first!");
 
@@ -9130,6 +9133,7 @@ static int fg_bq28z610_update_soc_smooth_parameter(void)
 	struct battery_chg_dev *bcdev = NULL;
 	struct psy_state *pst = NULL;
 	int sleep_mode_status = -1;
+	int retry_count = 0;
 
 	if (!g_oplus_chip) {
 		chg_err("g_oplus_chip is NULL!\n");
@@ -9153,8 +9157,9 @@ read_parameter:
 	}
 
 	chg_debug("bq8z610 sleep mode status = %d\n", sleep_mode_status);
-	if (sleep_mode_status != 1) {
+	if (sleep_mode_status != 1 && retry_count < 3) {
 		msleep(2000);
+		retry_count++;
 		goto read_parameter;
 	}
 

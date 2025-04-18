@@ -425,6 +425,8 @@ do {				\
 #define	OPLUS_FASTCHG_STAGE_2	  	2
 #define OPLUS_FASTCHG_RECOVER_TIME   	(15000/VOOC_FASTCHG_CHECK_TIME)
 
+#define BCC_CURRENT_MIN               		(1000/100)
+
 struct vooc_monitor_event {
 	int status;
 	int cnt;
@@ -442,7 +444,7 @@ struct batt_sys_curve {
 	unsigned int chg_time;
 };
 
-#define BATT_SYS_ROW_MAX        13
+#define BATT_SYS_ROW_MAX        20
 #define BATT_SYS_COL_MAX        7
 #define BATT_SYS_MAX            6
 
@@ -572,9 +574,13 @@ struct oplus_voocphy_manager {
 	unsigned int vooc_cool_down_num;
 	unsigned int current_default;
 	unsigned int current_expect;
+	unsigned int current_bcc_max;
+	unsigned int current_bcc_min;
+	unsigned int current_bcc_ext;
 	unsigned int current_max;
 	unsigned int current_spec;
 	unsigned int current_ap;
+	unsigned int current_bcc;
 	unsigned int current_batt_temp;
 	unsigned char ap_need_change_current;
 	unsigned char adjust_curr;
@@ -638,6 +644,7 @@ struct oplus_voocphy_manager {
 	bool fastchg_to_warm;
 	bool fastchg_to_warm_full;
 	int fast_chg_type;
+	int last_fast_chg_type;
 	bool fastchg_err_commu;
 	bool fastchg_reactive;
 	bool fastchg_real_allow;
@@ -815,6 +822,7 @@ struct oplus_voocphy_operations {
 	void (*set_pd_svooc_config)(struct oplus_voocphy_manager *chip, bool enable);
 	bool (*get_pd_svooc_config)(struct oplus_voocphy_manager *chip);
 	int (*adsp_voocphy_enable)(bool enable);
+	int (*adsp_batt_curve_current)(void);
 	int (*adsp_voocphy_reset_again)(void);
 	u8 (*get_vbus_status)(struct oplus_voocphy_manager *chip);
 	int (*set_chg_auto_mode)(struct oplus_voocphy_manager *chip, bool enable);
@@ -822,6 +830,8 @@ struct oplus_voocphy_operations {
 	int (*get_voocphy_enable)(struct oplus_voocphy_manager *chip, u8 *data);
 	void (*dump_voocphy_reg)(struct oplus_voocphy_manager *chip);
 	int (*set_dpdm_enable)(struct oplus_voocphy_manager *chip, bool enable);
+	int (*adsp_force_svooc)(bool enable);
+	int (*get_adsp_voocphy_enable)(void);
 };
 
 #define VOOCPHY_LOG_BUF_LEN 1024
@@ -905,4 +915,16 @@ void oplus_voocphy_set_detach_unexpectly(bool val);
 int oplus_voocphy_enter_ship_mode(void);
 int oplus_voocphy_adjust_current_by_cool_down(int val);
 bool oplus_voocphy_get_btb_temp_over(void);
+
+bool oplus_is_voocphy_charging(void);
+void oplus_voocphy_set_bcc_current(int val);
+int oplus_voocphy_get_bcc_max_curr(void);
+int oplus_voocphy_get_bcc_min_curr(void);
+bool oplus_voocphy_bcc_get_temp_range(void);
+int oplus_voocphy_get_bcc_exit_curr(void);
+int oplus_voocphy_get_batt_curve_current(void);
+void oplus_adsp_voocphy_force_svooc(int enable);
+int oplus_get_adsp_voocphy_enable(void);
+int oplus_voocphy_get_last_fast_chg_type(void);
+void oplus_voocphy_clear_last_fast_chg_type(void);
 #endif /* _OPLUS_VOOCPHY_H_ */

@@ -6862,7 +6862,7 @@ EXPORT_SYMBOL(oplus_chg_set_camera_on);
 
 
 //====================================================================//
-void oplus_set_typec_sinkonly(void)
+void oplus_set_typec_sinkonly()
 {
 	if (pinfo != NULL && pinfo->tcpc != NULL) {
 		printk(KERN_ERR "[OPLUS_CHG][%s]: usbtemp occur otg switch[0]\n", __func__);
@@ -7692,7 +7692,7 @@ static int mtk_charger_probe(struct platform_device *pdev)
 	chg_err("oplus_chg_init!\n");
 	oplus_chg_init(oplus_chip);
 
-	if (oplus_chg_get_voocphy_support() == true || is_vooc_support_single_batt_svooc() == true) {
+	if (oplus_chg_get_voocphy_support() != NO_VOOCPHY || is_vooc_support_single_batt_svooc() == true) {
 		is_mtksvooc_project = true;
 		chg_err("support voocphy or is mcu vooc support, is_mtksvooc_project is true!\n");
 	}

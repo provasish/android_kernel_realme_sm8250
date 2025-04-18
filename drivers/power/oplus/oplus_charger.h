@@ -540,11 +540,20 @@ typedef enum {
 	DUAL_BATT_50W,
 	DUAL_BATT_65W,
 	SINGLE_BATT_50W,
-	VOOCPHY_33W,
+	VOOCPHY_33W = 5,
 	VOOCPHY_60W,
 	DUAL_BATT_80W,
-	DUAL_BATT_100W,
+	DUAL_BATT_100W = 8,
 	DUAL_BATT_150W,
+	POWER_BANK_66W = 12,
+	POWER_BANK_67W = 13,
+	POWER_BANK_120W = 14,
+	POWER_BANK_44W = 15,
+	DUAL_BATT_240W = 16,
+	POWER_BANK_200W = 17,
+	POWER_BANK_88W = 18,
+	POWER_BANK_55W = 19,
+	POWER_BANK_125W = 20,
 	INVALID_VOOC_PROJECT,
 } OPLUS_VOOC_PROJECT_TYPE;
 
@@ -897,6 +906,13 @@ struct short_c_batt_data {
 	bool shortc_gpio_status;
 };
 
+struct oplus_chg_full_data {
+	bool hw_full;
+	bool sub_hw_full;
+	int vbat_counts_hw;
+	int sub_vbat_counts_hw;
+};
+
 struct reserve_soc_data {
 	#define SMOOTH_SOC_MAX_FIFO_LEN		4
 	#define SMOOTH_SOC_MIN_FIFO_LEN		1
@@ -988,6 +1004,7 @@ struct oplus_chg_chip {
 	bool sw_sub_batt_full;
 	bool hw_sub_batt_full_by_sw;
 	bool hw_sub_batt_full;
+	struct oplus_chg_full_data full_data;
 	int temperature;
 	int qc_abnormal_check_count;
 	int tbatt_temp;
@@ -1052,6 +1069,7 @@ struct oplus_chg_chip {
 	int tbatt_normal_status;
 	int tbatt_cold_status;
 	int prop_status;
+	int keep_prop_status;
 	int stop_voter;
 	int notify_code;
 	int notify_flag;
@@ -1324,6 +1342,8 @@ struct oplus_chg_chip {
 	int parallel_error_flag;
 	bool soc_not_full_report;
 	bool support_subboard_ntc;
+	bool full_pre_ffc_judge;
+	int full_pre_ffc_mv;
 };
 
 
@@ -1444,6 +1464,7 @@ struct oplus_chg_operations {
 	int (*set_bcc_curr_to_voocphy)(int bcc_curr);
 	bool (*is_support_qcpd)(void);
 	int (*get_subboard_temp)(void);
+	int (*get_ccdetect_online)(void);
 };
 
 int __attribute__((weak)) ppm_sys_boost_min_cpu_freq_set(int freq_min, int freq_mid, int freq_max, unsigned int clear_time)
@@ -1556,6 +1577,7 @@ bool oplus_chg_get_rechging_status(void);
 
 bool oplus_chg_check_pd_disable(void);
 
+int oplus_chg_check_ui_soc(void);
 bool oplus_chg_check_chip_is_null(void);
 void oplus_chg_set_charger_type_unknown(void);
 int oplus_chg_get_charger_voltage(void);
@@ -1682,5 +1704,6 @@ int oplus_chg_get_mmi_value(void);
 int oplus_chg_get_stop_chg(void);
 bool oplus_get_vooc_start_fg(void);
 int oplus_chg_get_fv_when_vooc(struct oplus_chg_chip *chip);
+int oplus_get_ccdetect_online(void);
 //#endif
 #endif /*_OPLUS_CHARGER_H_*/

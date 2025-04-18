@@ -142,6 +142,7 @@ extern int oplus_chg_set_shipping_mode(void);
 extern struct oplus_chg_operations * oplus_get_chg_ops(void);
 extern void oplus_usbtemp_recover_func(struct oplus_chg_chip *chip);
 extern int oplus_usbtemp_monitor_common(void *data);
+extern int oplus_usbtemp_monitor_common_new_method(void *data);
 extern int op10_subsys_init(void);
 extern int charge_pump_driver_init(void);
 extern int mp2650_driver_init(void);
@@ -4708,7 +4709,7 @@ void oplus_set_typec_sinkonly(void)
 {
 	if (pinfo != NULL && pinfo->tcpc != NULL) {
 		printk(KERN_ERR "[OPLUS_CHG][%s]: usbtemp occur otg switch[0]\n", __func__);
-		tcpm_typec_change_role(pinfo->tcpc, TYPEC_ROLE_SNK);
+		tcpm_typec_change_role_postpone(pinfo->tcpc, TYPEC_ROLE_SNK, true);
 	}
 };
 #endif /*OPLUS_FEATURE_CHG_BASIC*/
@@ -6523,7 +6524,7 @@ void oplus_set_otg_switch_status(bool value)
 			}
 		}
 
-		if (0 == tcpm_typec_change_role(pinfo->tcpc, value ? TYPEC_ROLE_TRY_SNK : TYPEC_ROLE_SNK)) {
+		if (0 == tcpm_typec_change_role_postpone(pinfo->tcpc, value ? TYPEC_ROLE_TRY_SNK : TYPEC_ROLE_SNK, true)) {
 			printk(KERN_ERR "[OPLUS_CHG][%s]: otg switch[%d] success\n", __func__, value);
 		} else {
 			printk(KERN_ERR "[OPLUS_CHG][%s]: otg switch[%d] failed.\n", __func__, value);
@@ -6591,8 +6592,8 @@ void oplus_ccdetect_enable(void)
 
 	/* set DRP mode */
 	if (pinfo != NULL && pinfo->tcpc != NULL){
-		tcpm_typec_change_role(pinfo->tcpc,TYPEC_ROLE_TRY_SNK);
-		pr_err("%s: set sink", __func__);
+		tcpm_typec_change_role_postpone(pinfo->tcpc, TYPEC_ROLE_TRY_SNK, true);
+		pr_err("%s: set drp\n", __func__);
 	}
 
 }
@@ -6612,8 +6613,8 @@ void oplus_ccdetect_disable(void)
 
 	/* set SINK mode */
 	if (pinfo != NULL && pinfo->tcpc != NULL){
-		tcpm_typec_change_role(pinfo->tcpc,TYPEC_ROLE_SNK);
-		pr_err("%s: set sink", __func__);
+		tcpm_typec_change_role_postpone(pinfo->tcpc, TYPEC_ROLE_SNK, true);
+		pr_err("%s: set sink\n", __func__);
 	}
 
 }
@@ -6799,6 +6800,10 @@ static bool oplus_chg_get_vbus_status(struct oplus_chg_chip *chip)
 
 static void oplus_usbtemp_thread_init(void)
 {
+	if (g_oplus_chip->support_usbtemp_protect_v2)
+		oplus_usbtemp_kthread =
+			kthread_run(oplus_usbtemp_monitor_common_new_method, g_oplus_chip, "usbtemp_kthread");
+	else
 	oplus_usbtemp_kthread =
 			kthread_run(oplus_usbtemp_monitor_common, g_oplus_chip, "usbtemp_kthread");
 	if (IS_ERR(oplus_usbtemp_kthread)) {
@@ -6810,8 +6815,12 @@ void oplus_wake_up_usbtemp_thread(void)
 {
 	if (oplus_usbtemp_check_is_support() == true) {
 		g_oplus_chip->usbtemp_check = oplus_usbtemp_condition();
-		if (g_oplus_chip->usbtemp_check)
-			wake_up_interruptible(&g_oplus_chip->oplus_usbtemp_wq);
+		if (g_oplus_chip->usbtemp_check) {
+			if (g_oplus_chip->support_usbtemp_protect_v2)
+				wake_up_interruptible(&g_oplus_chip->oplus_usbtemp_wq_new_method);
+			else
+				wake_up_interruptible(&g_oplus_chip->oplus_usbtemp_wq);
+		}
 	}
 }
 
@@ -7168,6 +7177,35 @@ int oplus_get_fast_chg_type(void)
 	return fast_chg_type;
 }
 
+static bool oplus_pd_without_usb(void)
+{
+	struct tcpc_device *tcpc;
+
+	tcpc = tcpc_dev_get_by_name("type_c_port0");
+	if (!tcpc) {
+		chg_err("get type_c_port0 fail\n");
+		return true;
+	}
+
+	if (!tcpm_inquire_pd_connected(tcpc))
+		return true;
+	return (tcpm_inquire_dpm_flags(tcpc) &
+			DPM_FLAGS_PARTNER_USB_COMM) ? false : true;
+}
+
+static bool oplus_pd_connect(void)
+{
+	struct tcpc_device *tcpc;
+
+	tcpc = tcpc_dev_get_by_name("type_c_port0");
+	if (!tcpc) {
+		chg_err("get type_c_port0 fail\n");
+		return false;
+	}
+
+	return tcpm_inquire_pd_connected(tcpc) ? true : false;
+}
+
 int mt_power_supply_type_check(void)
 {
 	int chr_type;
@@ -7182,6 +7220,16 @@ int mt_power_supply_type_check(void)
 	}
 
 	chr_type = get_charger_type(pinfo);
+
+	if (!oplus_pd_without_usb()) {
+		chr_type = POWER_SUPPLY_USB_TYPE_PD_SDP;
+	} else if (oplus_pd_connect()
+		&& ((chr_type == POWER_SUPPLY_TYPE_USB_CDP)
+			|| (chr_type == POWER_SUPPLY_TYPE_USB))) {
+		/*fix the bug: pd charger is recognized as USB_CDP or SDP.*/
+		chr_err("%s force charger_type[%d] as POWER_SUPPLY_TYPE_USB_DCP\n", __func__, chr_type);
+		chr_type = POWER_SUPPLY_TYPE_USB_DCP;
+	}
 
 	chr_err("charger_type[%d]\n", chr_type);
 
@@ -8523,6 +8571,5 @@ module_exit(mtk_charger_exit);
 oplus_chg_module_register(mtk_charger);
 #endif
 
-MODULE_AUTHOR("wy.chuang <wy.chuang@mediatek.com>");
 MODULE_DESCRIPTION("MTK Charger Driver");
 MODULE_LICENSE("GPL");

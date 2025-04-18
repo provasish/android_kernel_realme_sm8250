@@ -24,11 +24,21 @@ struct oplus_plat_gauge_operations {
 	int (*get_plat_battery_current)(void);
 };
 
+struct oplus_test_result {
+	int test_count_total;
+	int test_count_now;
+	int test_fail_count;
+	int real_test_count_now;
+	int real_test_fail_count;
+};
+
 struct oplus_external_auth_chip {
 	int (*get_external_auth_hmac)(void);
 	int (*start_test_external_hmac)(int count);
 	int (*get_hmac_test_result)(int *count_total, int *count_now, int *fail_count);
 	int (*get_hmac_status) (int *status, int *fail_count, int *total_count, int *real_fail_count, int *real_total_count);
+	struct oplus_test_result test_result;
+	struct delayed_work test_work;
 };
 
 struct oplus_gauge_operations {

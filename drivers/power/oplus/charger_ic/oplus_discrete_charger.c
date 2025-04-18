@@ -185,7 +185,7 @@ static DEFINE_MUTEX(pd_select_pdo_v);
 #define OPLUS_NOT_SUPPORT_CCDETECT		0
 
 extern struct oplus_chg_operations  sgm41511_chg_ops;
-
+extern int oplus_usbtemp_monitor_common_new_method(void *data);
 static int charger_ic__det_flag = 0;
 
 int get_charger_ic_det(struct oplus_chg_chip *chip)
@@ -1283,7 +1283,11 @@ EXPORT_SYMBOL(oplus_usbtemp_condition);
 
 static void oplus_usbtemp_thread_init(void)
 {
-	oplus_usbtemp_kthread =
+	if (g_oplus_chip->support_usbtemp_protect_v2)
+		oplus_usbtemp_kthread =
+			kthread_run(oplus_usbtemp_monitor_common_new_method, g_oplus_chip, "usbtemp_kthread");
+	else
+		oplus_usbtemp_kthread =
 			kthread_run(oplus_usbtemp_monitor_common, g_oplus_chip, "usbtemp_kthread");
 	if (IS_ERR(oplus_usbtemp_kthread)) {
 		chg_err("failed to cread oplus_usbtemp_kthread\n");
@@ -1294,8 +1298,12 @@ void oplus_wake_up_usbtemp_thread(void)
 {
 	if (oplus_usbtemp_check_is_support() == true) {
 		g_oplus_chip->usbtemp_check = oplus_usbtemp_condition();
-		if (g_oplus_chip->usbtemp_check)
-			wake_up_interruptible(&g_oplus_chip->oplus_usbtemp_wq);
+		if (g_oplus_chip->usbtemp_check) {
+			if (g_oplus_chip->support_usbtemp_protect_v2)
+				wake_up_interruptible(&g_oplus_chip->oplus_usbtemp_wq_new_method);
+			else
+				wake_up_interruptible(&g_oplus_chip->oplus_usbtemp_wq);
+		}
 	}
 }
 

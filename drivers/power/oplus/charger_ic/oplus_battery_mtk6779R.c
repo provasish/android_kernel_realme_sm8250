@@ -2930,7 +2930,7 @@ void mt_usb_disconnect(void)
 #endif /* OPLUS_FEATURE_CHG_BASIC */
 //====================================================================//
 
-void oplus_set_typec_sinkonly(void)
+void oplus_set_typec_sinkonly()
 {
 	if (pinfo != NULL && pinfo->tcpc != NULL) {
 		printk(KERN_ERR "[OPLUS_CHG][%s]: usbtemp occur otg switch[0]\n", __func__);
@@ -3249,6 +3249,5 @@ static void __exit mtk_charger_exit(void)
 module_exit(mtk_charger_exit);
 
 
-MODULE_AUTHOR("lizhijie");
 MODULE_DESCRIPTION("OPLUS Charger Driver");
 MODULE_LICENSE("GPL");

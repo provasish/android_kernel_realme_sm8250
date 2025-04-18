@@ -46,6 +46,7 @@
 #include <linux/ratelimit.h>
 #include <linux/debugfs.h>
 #include <linux/leds.h>
+#include <linux/jiffies.h>
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 14, 0))
 #include <linux/qpnp/qpnp-adc.h>
 #else
@@ -67,9 +68,9 @@
 #include "oplus_adapter.h"
 #include "chargepump_ic/oplus_pps_cp.h"
 #include "oplus_pps_ops_manager.h"
-
+#include "voocphy/oplus_voocphy.h"
+#include "oplus_quirks.h"
 /* pps int flag*/
-
 #define BIDIRECT_IRQ_EVNET_NUM	13
 
 #define VBAT_OVP_FLAG_MASK				BIT(7)
@@ -1288,6 +1289,8 @@ static int oplus_pps_variables_init(struct oplus_pps_chip *chip, int status)
 	chip->current_bcc = OPLUS_PPS_CURRENT_LIMIT_MAX;
 	chip->cp_master_abnormal = false;
 	chip->cp_slave_abnormal = false;
+	chip->pps_startup_retry_times = 0;
+
 	chip->timer.fastchg_timer = current_kernel_time();
 	chip->timer.temp_timer = current_kernel_time();
 	chip->timer.pdo_timer = current_kernel_time();
@@ -1363,8 +1366,12 @@ void oplus_pps_reset_temp_range(struct oplus_pps_chip *chip)
 	if (!chip || !chip->pps_support_type) {
 		return;
 	}
-
-	chip->limits.pps_normal_high_temp = chip->limits.default_pps_normal_high_temp;
+	if (chip->limits.default_pps_normal_high_temp <= 0) {
+		chip->limits.default_pps_normal_high_temp = 440;
+		chip->limits.pps_normal_high_temp = chip->limits.default_pps_normal_high_temp;
+	} else {
+		chip->limits.pps_normal_high_temp = chip->limits.default_pps_normal_high_temp;
+	}
 	chip->limits.pps_little_cold_temp = chip->limits.default_pps_little_cold_temp;
 	chip->limits.pps_cool_temp = chip->limits.default_pps_cool_temp;
 	chip->limits.pps_little_cool_temp = chip->limits.default_pps_little_cool_temp;
@@ -2640,9 +2647,13 @@ static void oplus_pps_slave_enable_check(struct oplus_pps_chip *chip)
 	}
 }
 
+#define PPS_RETRY_COUNT 1
+#define PPS_CHANGE_VBUS_ERR_TIMES 3
 static int oplus_pps_action_status_start(struct oplus_pps_chip *chip)
 {
 	int update_size = 0, vbat = 0;
+	static int vbus_err_times = 0;
+
 	if (!chip || !chip->ops || !chip->pps_support_type) {
 		pps_err("g_pps_chip null!\n");
 		return -ENODEV;
@@ -2683,7 +2694,28 @@ static int oplus_pps_action_status_start(struct oplus_pps_chip *chip)
 	chip->ask_charger_current = chip->target_charger_current;
 	if (chip->ap_input_volt < chip->target_charger_volt) {
 		chip->ask_charger_volt += update_size;
-	} else if (chip->ap_input_volt > (chip->target_charger_volt + OPLUS_PPS_VOLT_UPDATE_V1 + OPLUS_PPS_VOLT_UPDATE_V2)) {
+
+		if (chip->ask_charger_volt_last >= oplus_pps_get_curve_vbus(chip)) {
+			vbus_err_times++;
+			pps_err("pps_vbus_deviation %d times!\n", vbus_err_times);
+			if (vbus_err_times >= PPS_CHANGE_VBUS_ERR_TIMES) {
+				vbus_err_times = 0;
+				if (chip->pps_startup_retry_times < PPS_RETRY_COUNT) {
+					/* switch to 5.5V and try again */
+					pps_err("pps retry startup");
+					chip->pps_startup_retry_times++;
+				} else {
+					/* stop and force to svooc */
+					pps_err("stop pps and ready force to svooc");
+					chip->pps_stop_status = PPS_STOP_VOTER_STARTUP_FAIL;
+				}
+				chip->ask_charger_volt = PPS_VOL_CURVE_LMAX;
+			}
+		} else {
+			vbus_err_times = 0;
+		}
+	} else if (chip->ap_input_volt >
+		   (chip->target_charger_volt + OPLUS_PPS_VOLT_UPDATE_V1 + OPLUS_PPS_VOLT_UPDATE_V2)) {
 		chip->ask_charger_volt -= update_size;
 	} else {
 		pps_err("pps chargering volt okay\n");
@@ -2692,7 +2724,11 @@ static int oplus_pps_action_status_start(struct oplus_pps_chip *chip)
 			chip->pps_fastchg_started = false;
 		} else {
 			chip->pps_fastchg_started = true;
+			chip->pps_keep_last_status = true;
+			pps_err("pps_keep_last_status = %d\n", chip->pps_keep_last_status);
 		}
+		vbus_err_times = 0;
+		chip->pps_startup_retry_times = 0;
 		chip->pps_dummy_started = false;
 		oplus_pps_psy_changed(chip);
 	}
@@ -2966,6 +3002,7 @@ static void oplus_pps_voter_charging_stop(struct oplus_pps_chip *chip)
 	case PPS_STOP_VOTER_TDIE_OVER:
 	case PPS_STOP_VOTER_BATCELL_VOL_DIFF:
 	case PPS_STOP_VOTER_CP_ERROR:
+	case PPS_STOP_VOTER_STARTUP_FAIL:
 		schedule_delayed_work(&chip->pps_stop_work, 0);
 		break;
 	default:
@@ -3153,6 +3190,8 @@ void oplus_pps_set_pps_dummy_started(bool enable)
 	if (enable) {
 		chip->pps_dummy_started = true;
 		chip->pps_adapter_type = PPS_ADAPTER_OPLUS_V2;
+		chip->pps_keep_last_status = true;
+		pps_err("pps_keep_last_status = %d\n", chip->pps_keep_last_status);
 	} else {
 		chip->pps_dummy_started = false;
 		chip->pps_adapter_type = PPS_ADAPTER_UNKNOWN;
@@ -3179,6 +3218,34 @@ bool oplus_pps_get_pps_fastchg_started(void)
 	} else {
 		return chip->pps_fastchg_started;
 	}
+}
+
+bool oplus_pps_get_last_charging_status(void)
+{
+	struct oplus_pps_chip *chip = &g_pps_chip;
+
+	if (!chip || !chip->pps_support_type) {
+		return false;
+	} else {
+		pps_err("pps_keep_last_status = %d\n", chip->pps_keep_last_status);
+		if (oplus_quirks_keep_connect_status() == true && chip->pps_keep_last_status == true)
+		return true;
+	}
+	return false;
+}
+
+void oplus_pps_clear_last_charging_status(void)
+{
+	struct oplus_pps_chip *chip = &g_pps_chip;
+
+	if (!chip || !chip->pps_support_type) {
+		return;
+	} else {
+		chip->pps_keep_last_status = false;
+		chip->last_pps_power = OPLUS_PPS_POWER_CLR;
+		return;
+	}
+	return;
 }
 
 int oplus_pps_get_pps_disconnect(void)
@@ -3305,6 +3372,9 @@ static void oplus_pps_stop_work(struct work_struct *work)
 		oplus_chg_unsuspend_charger();
 		oplus_chg_disable_charge();
 		chip->pps_status = OPLUS_PPS_STATUS_FFC;
+	} else if ((chip->pps_stop_status == PPS_STOP_VOTER_STARTUP_FAIL) && (chip->pps_startup_retry_times > 0)) {
+		chip->pps_status = OPLUS_PPS_STATUS_START;
+		schedule_delayed_work(&chip->ready_force2svooc_work, msecs_to_jiffies(PPS_ACTION_START_DELAY));
 	} else {
 		oplus_chg_unsuspend_charger();
 		oplus_chg_enable_charge();
@@ -3334,6 +3404,40 @@ static void oplus_pps_vbat_diff_work(struct work_struct *work)
 		oplus_chg_sc8571_error((1 << PPS_REPORT_ERROR_VBAT_DIFF), NULL, diff);
 	}
 	pps_err("volt_max = %d volt_min = %d diff = %d dummy = %d\n", volt_max, volt_min, diff, oplus_pps_get_pps_dummy_started());
+}
+
+#define PPS2SVOOC_VBUS_MIN 4000
+#define PPS2SVOOC_VBUS_MAX 6000
+static void oplus_pps_ready_force2svooc_check_work(struct work_struct *work)
+{
+	struct oplus_pps_chip *chip = container_of(work, struct oplus_pps_chip, ready_force2svooc_work.work);
+
+	if (!chip || !chip->pps_support_type) {
+		return;
+	}
+
+	if (chip->pps_startup_retry_times <= 0) {
+		return;
+	}
+	oplus_pps_get_charging_data(chip);
+	if ((chip->ap_input_volt > PPS2SVOOC_VBUS_MIN)
+		&&(chip->ap_input_volt < PPS2SVOOC_VBUS_MAX)) {
+		pps_err("force to svooc");
+		oplus_adsp_voocphy_force_svooc(1);
+	} else {
+		schedule_delayed_work(&chip->ready_force2svooc_work, msecs_to_jiffies(PPS_ACTION_START_DELAY));
+	}
+}
+
+void oplus_pps_clear_startup_retry(void) {
+	struct oplus_pps_chip *chip = &g_pps_chip;
+
+	if (!chip || !chip->pps_support_type) {
+		return;
+	}
+	chip->pps_startup_retry_times = 0;
+	cancel_delayed_work(&chip->ready_force2svooc_work);
+	return;
 }
 
 int oplus_pps_get_adsp_authenticate(void) {
@@ -3533,6 +3637,7 @@ void oplus_pps_variables_reset(bool in)
 	chip->slave_enable_err_num = 0;
 	chip->pps_imax = 0;
 	chip->pps_vmax = 0;
+	chip->pps_startup_retry_times = 0;
 	oplus_pps_clear_cp_error();
 }
 
@@ -3574,6 +3679,7 @@ int oplus_pps_init(struct oplus_chg_chip *g_chg_chip)
 	INIT_DELAYED_WORK(&chip->pps_stop_work, oplus_pps_stop_work);
 	INIT_DELAYED_WORK(&chip->update_pps_work, oplus_pps_update_work);
 	INIT_DELAYED_WORK(&chip->check_vbat_diff_work, oplus_pps_vbat_diff_work);
+	INIT_DELAYED_WORK(&chip->ready_force2svooc_work, oplus_pps_ready_force2svooc_check_work);
 	oplus_pps_variables_reset(true);
 	oplus_pps_clear_dbg_info();
 	return 0;
@@ -3680,7 +3786,9 @@ void oplus_pps_set_power(int pps_ability, int imax, int vmax)
 	chip->pps_power = pps_ability;
 	chip->pps_imax = imax;
 	chip->pps_vmax = vmax;
-	pps_err(" %d, %d, %d, \n", chip->pps_power, chip->pps_imax, chip->pps_vmax);
+	if (pps_ability != OPLUS_PPS_POWER_CLR)
+		chip->last_pps_power = chip->pps_power;
+	pps_err(" %d, %d, %d, %d\n", chip->pps_power, chip->pps_imax, chip->pps_vmax, chip->last_pps_power);
 }
 
 int oplus_pps_get_power(void)
@@ -3688,6 +3796,20 @@ int oplus_pps_get_power(void)
 	struct oplus_pps_chip *chip = &g_pps_chip;
 	if (!chip || !chip->pps_support_type) {
 		return 0;
+	}
+
+	return chip->pps_power;
+}
+
+int oplus_pps_get_last_power(void)
+{
+	struct oplus_pps_chip *chip = &g_pps_chip;
+	if (!chip || !chip->pps_support_type) {
+		return 0;
+	}
+	if (oplus_pps_get_last_charging_status() && chip->pps_power == OPLUS_PPS_POWER_CLR) {
+		pps_err("last_pps_power: %d\n", chip->last_pps_power);
+		return chip->last_pps_power;
 	}
 	return chip->pps_power;
 }

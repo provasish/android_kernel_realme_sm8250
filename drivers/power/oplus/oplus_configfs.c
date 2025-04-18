@@ -22,8 +22,11 @@
 #include "charger_ic/oplus_switching.h"
 #include "oplus_debug_info.h"
 #include "op_wlchg_v2/oplus_chg_wls.h"
-//#include "wireless_ic/oplus_p922x.h"
+#include "wireless_ic/oplus_nu1619.h"
 #include "voocphy/oplus_voocphy.h"
+#include "oplus_quirks.h"
+
+#define OPLUS_SVOOC_ID_MIN    10
 
 static struct class *oplus_chg_class;
 static struct device *oplus_ac_dir;
@@ -86,6 +89,9 @@ static ssize_t ac_online_show(struct device *dev, struct device_attribute *attr,
 			chip->ac_online = false;
 		}
 	}
+
+	if (chip->ac_online == false && oplus_quirks_keep_connect_status() == 1)
+		chip->ac_online = true;
 
 	if (chip->ac_online) {
 		chg_err("chg_exist:%d, ac_online:%d\n", chip->charger_exist, chip->ac_online);
@@ -240,6 +246,7 @@ static ssize_t usbtemp_volt_r_show(struct device *dev, struct device_attribute *
 }
 static DEVICE_ATTR_RO(usbtemp_volt_r);
 
+static int fast_chg_type_by_user = -1;
 static ssize_t fast_chg_type_show(struct device *dev, struct device_attribute *attr,
                 char *buf)
 {
@@ -258,9 +265,36 @@ static ssize_t fast_chg_type_show(struct device *dev, struct device_attribute *a
 		type = CHARGER_SUBTYPE_DEFAULT;
 	}
 
+	if (fast_chg_type_by_user > 0)
+		type = fast_chg_type_by_user;
 	return sprintf(buf, "%d\n", type);
 }
-static DEVICE_ATTR_RO(fast_chg_type);
+static ssize_t fast_chg_type_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	int val = 0;
+	struct oplus_chg_chip *chip = NULL;
+
+	chip = (struct oplus_chg_chip *)dev_get_drvdata(oplus_battery_dir);
+	if (!chip) {
+		chg_err("chip is NULL\n");
+		return -EINVAL;
+	}
+
+	if (kstrtos32(buf, 0, &val)) {
+		chg_err("buf error\n");
+		return -EINVAL;
+	}
+	/*
+	if (get_eng_version() == RELEASE)
+		return count;
+	*/
+
+	fast_chg_type_by_user = val;
+	chg_err("costumer set val [%d], fast_chg_type_by_user [%d]\n", val, fast_chg_type_by_user);
+
+	return count;
+}
+static DEVICE_ATTR_RW(fast_chg_type);
 
 int __attribute__((weak)) oplus_get_typec_cc_orientation(void)
 {
@@ -519,7 +553,34 @@ static ssize_t charge_technology_show(struct device *dev, struct device_attribut
 
 	return sprintf(buf, "%d\n", chip->vooc_project);
 }
-static DEVICE_ATTR_RO(charge_technology);
+
+static ssize_t charge_technology_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	int val = 0;
+	struct oplus_chg_chip *chip = NULL;
+
+	chip = (struct oplus_chg_chip *)dev_get_drvdata(oplus_battery_dir);
+	if (!chip) {
+		chg_err("chip is NULL\n");
+		return -EINVAL;
+	}
+
+	if (kstrtos32(buf, 0, &val)) {
+		chg_err("buf error\n");
+		return -EINVAL;
+	}
+	/*
+	if (get_eng_version() == RELEASE)
+		return count;
+	*/
+
+	if (val > NO_VOOC && val < INVALID_VOOC_PROJECT)
+		chip->vooc_project = val;
+	chg_err("costumer set val [%d], new_vooc-project [%d]\n", val, chip->vooc_project);
+
+	return count;
+}
+static DEVICE_ATTR_RW(charge_technology);
 
 #ifdef CONFIG_OPLUS_CHIP_SOC_NODE
 static ssize_t chip_soc_show(struct device *dev, struct device_attribute *attr,
@@ -648,7 +709,10 @@ static ssize_t normal_current_now_store(struct device *dev, struct device_attrib
 	chg_err("val:%d\n", val);
 	if (!chip->led_on) {
 		if (chip->smart_normal_cool_down == 0) {
-			chip->normal_cool_down = oplus_convert_pps_current_to_level(chip, val);
+			if (oplus_pps_get_support_type() != PPS_SUPPORT_NOT)
+				chip->normal_cool_down = oplus_convert_pps_current_to_level(chip, val);
+			else
+				chip->normal_cool_down = oplus_convert_current_to_level(chip, val);
 			chg_err("set normal_cool_down:%d\n", val);
 		}
 	}
@@ -1328,6 +1392,12 @@ static ssize_t ppschg_ing_show(struct device *dev, struct device_attribute *attr
 
 	val = oplus_is_pps_charging();
 
+	if (val == 0
+		&& oplus_quirks_keep_connect_status() == 1
+		&& oplus_voocphy_get_fastchg_start() == 0)
+		val = oplus_pps_get_last_charging_status();
+
+	chg_err("val:%d\n", val);
 	return sprintf(buf, "%d\n", val);
 }
 static DEVICE_ATTR_RO(ppschg_ing);
@@ -1345,6 +1415,11 @@ static ssize_t ppschg_power_show(struct device *dev, struct device_attribute *at
 	}
 
 	val = oplus_pps_get_power();
+
+	if (val == OPLUS_PPS_POWER_CLR
+		&& oplus_quirks_keep_connect_status() == 1
+		&& oplus_voocphy_get_fastchg_start() == 0)
+		val = oplus_pps_get_last_power();
 
 	return sprintf(buf, "%d\n", val);
 }
@@ -1402,6 +1477,7 @@ static ssize_t bcc_parms_show(struct device *dev, struct device_attribute *attr,
 	int val = 0;
 	ssize_t len = 0;
 	struct oplus_chg_chip *chip = NULL;
+        int type = oplus_chg_get_fast_chg_type();
 
 	chip = (struct oplus_chg_chip *)dev_get_drvdata(oplus_battery_dir);
 	if (!chip) {
@@ -1409,8 +1485,9 @@ static ssize_t bcc_parms_show(struct device *dev, struct device_attribute *attr,
 		return -EINVAL;
 	}
 
-	if (oplus_vooc_get_reply_bits() == 7 &&
-	    oplus_chg_get_voocphy_support() == NO_VOOCPHY) {
+	if (oplus_vooc_get_reply_bits() == 7
+                && oplus_chg_get_voocphy_support() == NO_VOOCPHY
+                && (type == CHARGER_SUBTYPE_FASTCHG_SVOOC || type >= OPLUS_SVOOC_ID_MIN)) {
 		val = oplus_gauge_get_prev_bcc_parameters(buf);
 	} else {
 		val = oplus_gauge_get_bcc_parameters(buf);
@@ -1990,6 +2067,14 @@ ssize_t  __attribute__((weak)) oplus_chg_comm_response_mutual_cmd(struct oplus_c
 {
 	return -EINVAL;
 }
+ssize_t  __attribute__((weak)) oplus_chg_send_mutual_cmd(char *buf)
+{
+	return -EINVAL;
+}
+ssize_t  __attribute__((weak)) oplus_chg_response_mutual_cmd(const char *buf, size_t count)
+{
+	return -EINVAL;
+}
 static ssize_t mutual_cmd_show(struct device *dev, struct device_attribute *attr,
 		char *buf)
 {
@@ -2004,6 +2089,8 @@ static ssize_t mutual_cmd_show(struct device *dev, struct device_attribute *attr
 
 	if (is_comm_ocm_available(chip))
 		ret = oplus_chg_comm_send_mutual_cmd(chip->comm_ocm, buf);
+	else
+		ret = oplus_chg_send_mutual_cmd(buf);
 
 	return ret;
 }
@@ -2021,6 +2108,8 @@ static ssize_t mutual_cmd_store(struct device *dev, struct device_attribute *att
 
 	if (is_comm_ocm_available(chip))
 		oplus_chg_comm_response_mutual_cmd(chip->comm_ocm, buf, count);
+	else
+		oplus_chg_response_mutual_cmd(buf, count);
 
 	return count;
 }

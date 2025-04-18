@@ -176,7 +176,9 @@ int oplus_usbtemp_dischg_action(struct oplus_chg_chip *chip)
 #endif
 		oplus_set_usb_temp_high(chip);
 		if (oplus_vooc_get_fastchg_started() == true) {
-			oplus_vooc_turn_off_fastchg();
+			oplus_chg_set_chargerid_switch_val(0);
+			oplus_vooc_switch_mode(NORMAL_CHARGER_MODE);
+			oplus_vooc_reset_mcu();
 			if (oplus_pps_get_support_type() == PPS_SUPPORT_2CP) {
 				oplus_pps_set_pps_mos_enable(false);
 			}
@@ -1330,7 +1332,7 @@ int oplus_usbtemp_monitor_common_new_method(void *data)
 	struct timespec curr_range_change_first_time;
 	struct timespec curr_range_change_last_time;
 	bool usbtemp_first_time_in_curr_range = false;
-	static int current_read_count = 0;
+	static current_read_count = 0;
 	struct oplus_chg_chip *chip = (struct oplus_chg_chip *) data;
 #ifndef CONFIG_OPLUS_CHARGER_MTK
 	struct smb_charger *chg = NULL;

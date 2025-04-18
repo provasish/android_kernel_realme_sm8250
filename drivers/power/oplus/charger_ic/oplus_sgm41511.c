@@ -285,10 +285,12 @@ int sgm41511_chg_get_dyna_aicl_result(void)
 	return aicl_result;
 }
 
-#define AICL_POINT_VOL_5V_HIGH		4140
-#define AICL_POINT_VOL_5V_LOW		4000
-#define HW_AICL_POINT_VOL_5V_PHASE1	4440
-#define HW_AICL_POINT_VOL_5V_PHASE2	4520
+#define AICL_POINT_VOL_5V_HIGH		4300
+#define AICL_POINT_VOL_5V_LOW		4140
+#define HW_AICL_POINT_VOL_5V_PHASE1	4400
+#define HW_AICL_POINT_VOL_5V_PHASE2	4500
+#define HW_AICL_POINT_VOL_5V_PHASE3	4600
+#define HW_AICL_POINT_VOL_5V_CHECK	4250
 #define SW_AICL_POINT_VOL_5V_PHASE1	4500
 #define SW_AICL_POINT_VOL_5V_PHASE2	4535
 void sgm41511_set_aicl_point(int vbatt)
@@ -298,15 +300,27 @@ void sgm41511_set_aicl_point(int vbatt)
 	if (!chip)
 		return;
 
-	if (chip->hw_aicl_point == HW_AICL_POINT_VOL_5V_PHASE1 && vbatt > AICL_POINT_VOL_5V_HIGH) {
-		chip->hw_aicl_point = HW_AICL_POINT_VOL_5V_PHASE2;
-		chip->sw_aicl_point = SW_AICL_POINT_VOL_5V_PHASE2;
-		sgm41511_set_vindpm_vol(chip->hw_aicl_point);
-	} else if (chip->hw_aicl_point == HW_AICL_POINT_VOL_5V_PHASE2 && vbatt < AICL_POINT_VOL_5V_LOW) {
-		chip->hw_aicl_point = HW_AICL_POINT_VOL_5V_PHASE1;
-		chip->sw_aicl_point = SW_AICL_POINT_VOL_5V_PHASE1;
-		sgm41511_set_vindpm_vol(chip->hw_aicl_point);
+	if (vbatt > AICL_POINT_VOL_5V_HIGH) {
+		if (chip->hw_aicl_point != HW_AICL_POINT_VOL_5V_PHASE3) {
+			chip->hw_aicl_point = HW_AICL_POINT_VOL_5V_PHASE3;
+			chip->sw_aicl_point = SW_AICL_POINT_VOL_5V_PHASE2;
+		}
+	} else if (vbatt > AICL_POINT_VOL_5V_LOW) {
+		if (chip->hw_aicl_point == HW_AICL_POINT_VOL_5V_PHASE3 && vbatt < HW_AICL_POINT_VOL_5V_CHECK) {
+			chip->hw_aicl_point = HW_AICL_POINT_VOL_5V_PHASE2;
+			chip->sw_aicl_point = SW_AICL_POINT_VOL_5V_PHASE2;
+		} else if (chip->hw_aicl_point == HW_AICL_POINT_VOL_5V_PHASE1) {
+			chip->hw_aicl_point = HW_AICL_POINT_VOL_5V_PHASE2;
+			chip->sw_aicl_point = SW_AICL_POINT_VOL_5V_PHASE2;
+		}
+	} else {
+		if (chip->hw_aicl_point != HW_AICL_POINT_VOL_5V_PHASE1) {
+			chip->hw_aicl_point = HW_AICL_POINT_VOL_5V_PHASE1;
+			chip->sw_aicl_point = SW_AICL_POINT_VOL_5V_PHASE1;
+		}
 	}
+
+	sgm41511_set_vindpm_vol(chip->hw_aicl_point);
 }
 
 int sgm41511_get_charger_vol(void)
@@ -1459,6 +1473,12 @@ void sgm41511_vooc_timeout_callback(bool vbus_rising)
 int sgm41511_hardware_init(void)
 {
 	struct chip_sgm41511 *chip = charger_ic;
+	struct oplus_chg_chip *ochip = g_oplus_chip;
+	int vbatt = 0;
+
+	if (ochip) {
+		vbatt = ochip->batt_volt;
+	}
 
 	chg_err("init sgm41511 hardware! \n");
 
@@ -1467,7 +1487,13 @@ int sgm41511_hardware_init(void)
         }
 
 	/*must be before set_vindpm_vol and set_input_current*/
-	chip->hw_aicl_point = HW_AICL_POINT_VOL_5V_PHASE1;
+	if (vbatt > AICL_POINT_VOL_5V_HIGH) {
+		chip->hw_aicl_point = HW_AICL_POINT_VOL_5V_PHASE3;
+	} else if (vbatt > AICL_POINT_VOL_5V_LOW) {
+		chip->hw_aicl_point = HW_AICL_POINT_VOL_5V_PHASE2;
+	} else {
+		chip->hw_aicl_point = HW_AICL_POINT_VOL_5V_PHASE1;
+	}
 	chip->sw_aicl_point = SW_AICL_POINT_VOL_5V_PHASE1;
 
 

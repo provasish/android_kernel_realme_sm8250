@@ -40,6 +40,7 @@ oplus_chg-y += oplus_charger.o
 oplus_chg-y += oplus_gauge.o
 oplus_chg-y += oplus_vooc.o
 oplus_chg-y += oplus_pps.o
+oplus_chg-y += oplus_quirks.o
 oplus_chg-y += oplus_adapter.o
 oplus_chg-y += oplus_short.o
 oplus_chg-y += oplus_wireless.o
@@ -246,6 +247,7 @@ obj-y	+= oplus_gauge.o
 obj-y	+= oplus_vooc.o
 obj-y	+= oplus_adapter.o
 obj-y 	+= oplus_chg_track.o
+obj-y 	+= oplus_quirks.o
 
 ifneq ($(CONFIG_OPLUS_CHARGER_MTK),y)
 ifeq ($(BRAND_SHOW_FLAG),oneplus)
@@ -266,6 +268,7 @@ obj-y   += charger_ic/s2asl01_switching.o
 obj-y   += charger_ic/oplus_switching.o
 obj-y   += chargepump_ic/
 obj-y	+= oplus_pps_ops_manager.o
+obj-y 	+= oplus_quirks.o
 
 obj-y += oplus_chg_voter.o
 obj-y += oplus_chg_core.o

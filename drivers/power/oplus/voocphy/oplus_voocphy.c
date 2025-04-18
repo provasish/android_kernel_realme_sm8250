@@ -23,6 +23,8 @@
 #ifndef CONFIG_DISABLE_OPLUS_FUNCTION
 #include <soc/oplus/system/oplus_project.h>
 #endif
+#include "../oplus_pps.h"
+#include "oplus_quirks.h"
 
 #define AP_ALLOW_FASTCHG	(1 << 6)
 #define TARGET_VOL_OFFSET_THR	250
@@ -2394,7 +2396,10 @@ int oplus_voocphy_handle_ask_bat_model_process_cmd(struct oplus_voocphy_manager 
 			} else {
 				if (chip->fastchg_real_allow) {
 					chip->fastchg_allow = true; //batt allow dchg
-					chip->fastchg_start = true; //fastchg_start true
+					if (oplus_voocphy_get_bidirect_cp_support())
+						chip->fastchg_start = false;
+					else
+						chip->fastchg_start = true;
 					chip->fastchg_to_warm = false;
 					chip->fastchg_dummy_start = false;
 					oplus_voocphy_set_status_and_notify_ap(chip, FAST_NOTIFY_PRESENT);
@@ -4073,10 +4078,13 @@ unsigned char oplus_voocphy_set_fastchg_current(struct oplus_voocphy_manager *ch
 {
 	unsigned char current_expect_temp = chip->current_expect;
 
-	voocphy_info( "max_curr[%d] ap_curr[%d] temp_curr[%d]",
-	              chip->current_max, chip->current_ap, chip->current_batt_temp);
+	voocphy_info("max_curr[%d] ap_curr[%d] temp_curr[%d] bcc_curr[%d]",
+	              chip->current_max, chip->current_ap, chip->current_batt_temp, chip->current_bcc);
 
 	chip->current_expect = chip->current_max > chip->current_ap ? chip->current_ap : chip->current_max;
+	if (chip->current_bcc > 0) {
+		chip->current_expect = chip->current_expect > chip->current_bcc ? chip->current_bcc : chip->current_expect;
+	}
 
 	chip->current_expect = chip->current_expect > chip->current_batt_temp ? chip->current_batt_temp : chip->current_expect;
 	if (oplus_switching_support_parallel_chg() == PARALLEL_MOS_CTRL) {
@@ -4918,6 +4926,7 @@ int oplus_voocphy_vol_event_handle(unsigned long data)
 		chip->main_vbatt = oplus_gauge_get_batt_mvolts();
 		chip->sub_vbatt = oplus_gauge_get_sub_batt_mvolts();
 		chip->pre_gauge_vbatt = chip->main_vbatt > chip->sub_vbatt ? chip->main_vbatt : chip->sub_vbatt;
+		chip->gauge_vbatt = chip->pre_gauge_vbatt;
 		chip->main_batt_icharging = -oplus_gauge_get_batt_current();
 		chip->sub_batt_icharging = -oplus_gauge_get_sub_batt_current();
 		chip->icharging = chip->main_batt_icharging + chip->sub_batt_icharging;
@@ -6085,8 +6094,37 @@ int oplus_voocphy_get_fast_chg_type(void)
 	if (!g_voocphy_chip) {
 		return FASTCHG_CHARGER_TYPE_UNKOWN;
 	} else {
+		if(g_voocphy_chip->fast_chg_type == FASTCHG_CHARGER_TYPE_UNKOWN
+			&& oplus_quirks_keep_connect_status() == 1)
+			return oplus_voocphy_get_last_fast_chg_type();
+
 		return g_voocphy_chip->fast_chg_type;
 	}
+}
+
+int oplus_voocphy_get_last_fast_chg_type(void)
+{
+	if (!g_voocphy_chip) {
+		return FASTCHG_CHARGER_TYPE_UNKOWN;
+	} else {
+		if(g_voocphy_chip->fast_chg_type == FASTCHG_CHARGER_TYPE_UNKOWN
+				&& oplus_quirks_keep_connect_status() == 1) {
+			voocphy_info("keep last_fast_chg_type:%d\n", g_voocphy_chip->last_fast_chg_type);
+			return g_voocphy_chip->last_fast_chg_type;
+		}
+		return g_voocphy_chip->fast_chg_type;
+	}
+}
+
+void oplus_voocphy_clear_last_fast_chg_type(void)
+{
+	if (!g_voocphy_chip) {
+		return;
+	} else {
+		g_voocphy_chip->last_fast_chg_type = FASTCHG_CHARGER_TYPE_UNKOWN;
+		voocphy_info("last_fast_chg_type:%d\n", g_voocphy_chip->last_fast_chg_type);
+	}
+	return;
 }
 
 int oplus_voocphy_get_switch_gpio_val(void)
@@ -7234,6 +7272,36 @@ void oplus_adsp_voocphy_turn_off(void)
 	}
 }
 
+void oplus_adsp_voocphy_force_svooc(int enable)
+{
+	struct oplus_voocphy_manager *chip = g_voocphy_chip;
+
+	if (!chip) {
+		return;
+	}
+	if (!chip->ops->adsp_force_svooc) {
+		return;
+	}
+	if (enable)
+	oplus_set_quirks_plug_status(QUIRKS_STOP_PPS, 1);
+
+	chip->ops->adsp_force_svooc(enable);
+}
+
+int oplus_get_adsp_voocphy_enable(void)
+{
+	struct oplus_voocphy_manager *chip = g_voocphy_chip;
+
+	if (!chip) {
+		return 0;
+	}
+	if (!chip->ops->get_adsp_voocphy_enable) {
+		return 0;
+	}
+
+	return chip->ops->get_adsp_voocphy_enable();
+}
+
 void oplus_adsp_voocphy_reset(void)
 {
 	int rc  = 0;
@@ -7261,6 +7329,27 @@ int oplus_adsp_voocphy_get_rx_data(void)
 
 
 	return g_voocphy_chip->adsp_voocphy_rx_data;
+}
+
+int oplus_voocphy_get_batt_curve_current(void)
+{
+	int rc;
+	struct oplus_voocphy_manager *chip = g_voocphy_chip;
+
+	if (!chip) {
+		return 100;
+	} else {
+		if((chip->ops->adsp_batt_curve_current) && (oplus_chg_get_voocphy_support() == ADSP_VOOCPHY)) {
+			rc = chip->ops->adsp_batt_curve_current();
+			if(rc < 0) {
+				voocphy_err("%s: Weakly defined functions should not be used\n", __func__);
+				return 100;
+			}
+		} else {
+			rc = oplus_gauge_get_batt_current();
+		}
+	}
+	return rc;
 }
 
 void oplus_voocphy_adapter_plugout_handler(void)
@@ -7648,4 +7737,108 @@ int oplus_voocphy_adjust_current_by_cool_down(int val)
 		chip->ap_need_change_current = oplus_voocphy_set_fastchg_current(chip);
 
 	return 0;
+}
+
+bool oplus_is_voocphy_charging(void)
+{
+	struct oplus_voocphy_manager *chip = g_voocphy_chip;
+
+	if (!chip) {
+		chg_err("g_voocphy_chip or chip is null\n");
+		return false;
+	}
+
+	if (chip->adapter_type == ADAPTER_SVOOC)
+		return oplus_vooc_get_fastchg_started();
+	else
+		return false;
+}
+
+void oplus_voocphy_set_bcc_current(int val)
+{
+	struct oplus_voocphy_manager *chip = g_voocphy_chip;
+
+	if (!chip) {
+		chg_err("g_voocphy_chip or chip is null\n");
+		return;
+	}
+
+	if (chip->adapter_type == ADAPTER_SVOOC)
+		chip->current_bcc = val / 2;
+	else
+		chip->current_bcc = 0;
+
+	chg_err("oplus_voocphy_set_bcc_current %d %d\n", val, chip->current_bcc);
+}
+
+int oplus_voocphy_get_bcc_max_curr(void)
+{
+	struct oplus_voocphy_manager *chip = g_voocphy_chip;
+
+	if (!chip) {
+		chg_err("g_voocphy_chip or chip is null\n");
+		return 0;
+	}
+
+	if (chip->adapter_type == ADAPTER_SVOOC) {
+		if (chip->current_max >=  BCC_CURRENT_MIN)
+			chip->current_bcc_max = chip->current_max * 2;
+		else
+			chip->current_bcc_max = BCC_CURRENT_MIN * 2;
+	} else {
+		chip->current_bcc_max = 0;
+	}
+
+	return chip->current_bcc_max;
+}
+
+int oplus_voocphy_get_bcc_min_curr(void)
+{
+	struct oplus_voocphy_manager *chip = g_voocphy_chip;
+
+	if (!chip) {
+		chg_err("g_voocphy_chip or chip is null\n");
+		return 0;
+	}
+
+	if (chip->adapter_type == ADAPTER_SVOOC)
+		chip->current_bcc_min = BCC_CURRENT_MIN * 2;
+	else
+		chip->current_bcc_min = 0;
+
+	return chip->current_bcc_min;
+}
+
+bool oplus_voocphy_bcc_get_temp_range(void)
+{
+	struct oplus_voocphy_manager *chip = g_voocphy_chip;
+
+	if (!chip) {
+		chg_err("g_voocphy_chip or chip is null\n");
+		return false;
+	}
+	if (chip->adapter_type == ADAPTER_SVOOC) {
+		if (chip->fastchg_batt_temp_status == BAT_TEMP_NORMAL_LOW ||
+			chip->fastchg_batt_temp_status == BAT_TEMP_NORMAL_HIGH) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+int oplus_voocphy_get_bcc_exit_curr(void)
+{
+	struct oplus_voocphy_manager *chip = g_voocphy_chip;
+
+	if (!chip) {
+		chg_err("g_voocphy_chip or chip is null\n");
+		return 0;
+	}
+	if (chip->adapter_type == ADAPTER_SVOOC)
+		chip->current_bcc_ext = BCC_CURRENT_MIN * 2;
+	else
+		chip->current_bcc_ext = 0;
+
+	return chip->current_bcc_ext;
 }

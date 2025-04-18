@@ -1615,7 +1615,6 @@ static int mtk_charger_plug_in(struct charger_manager *info,
 	charger_dev_set_input_current(info->chg1_dev,
 				info->chg1_data.input_current_limit);
 	charger_dev_plug_in(info->chg1_dev);
-	oplus_chg_track_check_wired_charging_break(1);
 	return 0;
 }
 
@@ -1641,7 +1640,6 @@ static int mtk_charger_plug_out(struct charger_manager *info)
 	charger_dev_set_input_current(info->chg1_dev, 100000);
 	charger_dev_set_mivr(info->chg1_dev, info->data.min_charger_voltage);
 	charger_dev_plug_out(info->chg1_dev);
-	oplus_chg_track_check_wired_charging_break(0);
 	return 0;
 }
 
@@ -6703,7 +6701,6 @@ int oplus_chg_set_qc_config(void)
 		}
 	}
 
-	oplus_chg_track_record_chg_type_info();
 	return ret;
 }
 
@@ -6847,7 +6844,7 @@ EXPORT_SYMBOL(oplus_chg_set_camera_on);
 
 
 //====================================================================//
-void oplus_set_typec_sinkonly(void)
+void oplus_set_typec_sinkonly()
 {
 	if (pinfo != NULL && pinfo->tcpc != NULL) {
 		tcpm_typec_disable_function(pinfo->tcpc, false);
@@ -8137,6 +8134,5 @@ static void __exit mtk_charger_exit(void)
 module_exit(mtk_charger_exit);
 
 
-MODULE_AUTHOR("wy.chuang <wy.chuang@mediatek.com>");
 MODULE_DESCRIPTION("MTK Charger Driver");
 MODULE_LICENSE("GPL");

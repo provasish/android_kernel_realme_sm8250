@@ -108,11 +108,13 @@ void __attribute__((weak)) oplus_notify_device_mode(bool enable)
 #define SUB_ICHG_LSB	64
 
 #define AICL_POINT_VOL_9V 		7600
-#define AICL_POINT_VOL_5V_HIGH		4250
-#define AICL_POINT_VOL_5V_MID		4150
-#define AICL_POINT_VOL_5V_LOW		4100
+#define AICL_POINT_VOL_5V		4100
+#define AICL_POINT_VOL_5V_HIGH		4300
+#define AICL_POINT_VOL_5V_LOW		4140
 #define HW_AICL_POINT_VOL_5V_PHASE1 	4400
 #define HW_AICL_POINT_VOL_5V_PHASE2 	4500
+#define HW_AICL_POINT_VOL_5V_PHASE3	4600
+#define HW_AICL_POINT_VOL_5V_CHECK	4250
 #define SW_AICL_POINT_VOL_5V_PHASE1 	4500
 #define SW_AICL_POINT_VOL_5V_PHASE2 	4550
 
@@ -1799,6 +1801,8 @@ static int sy6970_register_interrupt(struct device_node *np,struct sy6970 *bq)
 static int sy6970_init_device(struct sy6970 *bq)
 {
 	int ret = 0;
+	int vbatt = 0;
+	struct oplus_chg_chip *chip = g_oplus_chip;
 
 	sy6970_disable_watchdog_timer(bq);
 	bq->is_force_dpdm = false;
@@ -1838,8 +1842,17 @@ static int sy6970_init_device(struct sy6970 *bq)
 	if (ret)
 		pr_err("Failed to start adc, ret = %d\n", ret);
 
+	if (chip) {
+		vbatt = chip->batt_volt;
+	}
 
-	ret = sy6970_set_input_volt_limit(bq, HW_AICL_POINT_VOL_5V_PHASE1);
+	if (vbatt > AICL_POINT_VOL_5V_HIGH) {
+		ret = sy6970_set_input_volt_limit(bq, HW_AICL_POINT_VOL_5V_PHASE3);
+	} else if (vbatt > AICL_POINT_VOL_5V_LOW) {
+		ret = sy6970_set_input_volt_limit(bq, HW_AICL_POINT_VOL_5V_PHASE2);
+	} else {
+		ret = sy6970_set_input_volt_limit(bq, HW_AICL_POINT_VOL_5V_PHASE1);
+	}
 	if (ret)
 		pr_err("Failed to set input volt limit, ret = %d\n", ret);
 
@@ -2515,10 +2528,20 @@ void oplus_sy6970_set_mivr(int vbatt)
 	if(!g_bq)
 		return;
 
-	if (g_bq->hw_aicl_point == HW_AICL_POINT_VOL_5V_PHASE1 && vbatt > AICL_POINT_VOL_5V_HIGH) {
-		g_bq->hw_aicl_point = HW_AICL_POINT_VOL_5V_PHASE2;
-	} else if (g_bq->hw_aicl_point == HW_AICL_POINT_VOL_5V_PHASE2 && vbatt < AICL_POINT_VOL_5V_MID) {
-		g_bq->hw_aicl_point = HW_AICL_POINT_VOL_5V_PHASE1;
+	if (vbatt > AICL_POINT_VOL_5V_HIGH) {
+		if (g_bq->hw_aicl_point != HW_AICL_POINT_VOL_5V_PHASE3) {
+			g_bq->hw_aicl_point = HW_AICL_POINT_VOL_5V_PHASE3;
+		}
+	} else if (vbatt > AICL_POINT_VOL_5V_LOW) {
+		if (g_bq->hw_aicl_point == HW_AICL_POINT_VOL_5V_PHASE3 && vbatt < HW_AICL_POINT_VOL_5V_CHECK) {
+			g_bq->hw_aicl_point = HW_AICL_POINT_VOL_5V_PHASE2;
+		} else if (g_bq->hw_aicl_point == HW_AICL_POINT_VOL_5V_PHASE1) {
+			g_bq->hw_aicl_point = HW_AICL_POINT_VOL_5V_PHASE2;
+		}
+	} else {
+		if (g_bq->hw_aicl_point != HW_AICL_POINT_VOL_5V_PHASE1) {
+			g_bq->hw_aicl_point = HW_AICL_POINT_VOL_5V_PHASE1;
+		}
 	}
 
 	sy6970_set_input_volt_limit(g_bq, g_bq->hw_aicl_point);
@@ -2544,12 +2567,12 @@ void oplus_sy6970_set_mivr_by_battery_vol(void)
 		vbatt = chip->batt_volt;
 	}
 
-	if (vbatt > SY6970_VINDPM_VBAT_PHASE1) {
-		mV = vbatt + SY6970_VINDPM_THRES_PHASE1;
-	} else if (vbatt > SY6970_VINDPM_VBAT_PHASE2) {
-		mV = vbatt + SY6970_VINDPM_THRES_PHASE2;
+	if (vbatt > AICL_POINT_VOL_5V_HIGH) {
+		mV = HW_AICL_POINT_VOL_5V_PHASE3;
+	} else if (vbatt > AICL_POINT_VOL_5V_LOW) {
+		mV = HW_AICL_POINT_VOL_5V_PHASE2;
 	} else {
-		mV = vbatt + SY6970_VINDPM_THRES_PHASE3;
+		mV = HW_AICL_POINT_VOL_5V_PHASE1;
 	}
 
 	if (mV < SY6970_VINDPM_THRES_MIN) {
@@ -2604,13 +2627,13 @@ static int oplus_sy6970_set_aicr(int current_ma)
 		if (chg_vol > AICL_POINT_VOL_9V) {
 			aicl_point_temp = aicl_point = AICL_POINT_VOL_9V;
 		} else {
-			if (chip->batt_volt > AICL_POINT_VOL_5V_LOW)
+			if (chip->batt_volt > AICL_POINT_VOL_5V)
 				aicl_point_temp = aicl_point = SW_AICL_POINT_VOL_5V_PHASE2;
 			else
 				aicl_point_temp = aicl_point = SW_AICL_POINT_VOL_5V_PHASE1;
 		}
 	} else {
-		if (chip->batt_volt > AICL_POINT_VOL_5V_LOW)
+		if (chip->batt_volt > AICL_POINT_VOL_5V)
 			aicl_point_temp = aicl_point = SW_AICL_POINT_VOL_5V_PHASE2;
 		else
 			aicl_point_temp = aicl_point = SW_AICL_POINT_VOL_5V_PHASE1;
@@ -2795,14 +2818,28 @@ int oplus_sy6970_charging_enable(void)
 
 int oplus_sy6970_charging_disable(void)
 {
+	int vbatt = 0;
+	struct oplus_chg_chip *chip = g_oplus_chip;
+
 	if(!g_bq)
 		return 0;
 
 	chg_info(" disable");
 
+	if (chip) {
+		vbatt = chip->batt_volt;
+	}
+
 	sy6970_disable_watchdog_timer(g_bq);
 	g_bq->pre_current_ma = -1;
-	g_bq->hw_aicl_point = HW_AICL_POINT_VOL_5V_PHASE1;
+
+	if (vbatt > AICL_POINT_VOL_5V_HIGH) {
+		g_bq->hw_aicl_point = HW_AICL_POINT_VOL_5V_PHASE3;
+	} else if (vbatt > AICL_POINT_VOL_5V_LOW) {
+		g_bq->hw_aicl_point = HW_AICL_POINT_VOL_5V_PHASE2;
+	} else {
+		g_bq->hw_aicl_point = HW_AICL_POINT_VOL_5V_PHASE1;
+	}
 	sy6970_set_input_volt_limit(g_bq, g_bq->hw_aicl_point);
 
 	return sy6970_disable_charger(g_bq);
@@ -2811,13 +2848,25 @@ int oplus_sy6970_charging_disable(void)
 int oplus_sy6970_hardware_init(void)
 {
 	int ret = 0;
+	int vbatt = 0;
+	struct oplus_chg_chip *chip = g_oplus_chip;
+
+	if (chip) {
+		vbatt = chip->batt_volt;
+	}
 
 	if(!g_bq)
 		return 0;
 
 	chg_info(" init ");
 
-	g_bq->hw_aicl_point = HW_AICL_POINT_VOL_5V_PHASE1;
+	if (vbatt > AICL_POINT_VOL_5V_HIGH) {
+		g_bq->hw_aicl_point = HW_AICL_POINT_VOL_5V_PHASE3;
+	} else if (vbatt > AICL_POINT_VOL_5V_LOW) {
+		g_bq->hw_aicl_point = HW_AICL_POINT_VOL_5V_PHASE2;
+	} else {
+		g_bq->hw_aicl_point = HW_AICL_POINT_VOL_5V_PHASE1;
+	}
 	sy6970_set_input_volt_limit(g_bq, g_bq->hw_aicl_point);
 
 	if (atomic_read(&g_bq->charger_suspended) == 1) {
@@ -3779,6 +3828,42 @@ int oplus_sy6970_set_ichg(int cur)
 	return 0;
 }
 
+static void register_charger_devinfo(struct sy6970 *bq)
+{
+#ifndef CONFIG_DISABLE_OPLUS_FUNCTION
+	int ret = 0;
+	char *version;
+	char *manufacture;
+
+	if (!bq) {
+		chg_err("bq is null");
+		return;
+	}
+	switch (bq->part_no) {
+	case SY6970_PART_NO:
+		version = "sy6970";
+		manufacture = "Silergy Corp.";
+		break;
+	case BQ25890H_PART_NO:
+		version = "bq25890h";
+		manufacture = "Texas Instruments";
+		break;
+	default:
+		version = "unknown";
+		manufacture = "UNKNOWN";
+		break;
+	}
+	if (strcmp(bq->chg_dev_name, "primary_chg") == 0) {
+		ret = register_device_proc("charger", version, manufacture);
+	} else {
+		ret = register_device_proc("secondary_charger", version, manufacture);
+	}
+	if (ret) {
+		pr_err("register_charger_devinfo fail\n");
+	}
+#endif
+}
+
 static struct of_device_id sy6970_charger_match_table[] = {
 	{.compatible = "ti,bq25890h",},
 	{.compatible = "oplus,sy6970",},
@@ -3828,7 +3913,7 @@ static int sy6970_charger_probe(struct i2c_client *client,
 		ret = -EINVAL;
 		goto err_parse_dt;
 	}
-
+	register_charger_devinfo(bq);
 	sy6970_reset_chip(bq);
 
 	ret = sy6970_init_device(bq);

@@ -279,6 +279,7 @@ typedef enum {
 	PPS_STOP_VOTER_BATCELL_VOL_DIFF = (1 << 13),
 	PPS_STOP_VOTER_CP_ERROR = (1 << 14),
 	PPS_STOP_VOTER_OTHER_ABORMAL = (1 << 15),
+	PPS_STOP_VOTER_STARTUP_FAIL = (1 << 16),
 } PPS_STOP_VOTER;
 
 struct batt_curve {
@@ -442,6 +443,7 @@ struct oplus_pps_chip {
 	struct delayed_work pps_stop_work;
 	struct delayed_work update_pps_work;
 	struct delayed_work check_vbat_diff_work;
+	struct delayed_work ready_force2svooc_work;
 
 
 /*curve data*/
@@ -508,6 +510,7 @@ struct oplus_pps_chip {
 	int pps_low_curr_full_temp_status;
 	int pps_chging;
 	int pps_power;
+	int last_pps_power;
 	int pps_adapter_type;
 	int pps_status;
 	int pps_stop_status;
@@ -515,6 +518,7 @@ struct oplus_pps_chip {
 	int pps_support_third;
 	int pps_dummy_started;
 	int pps_fastchg_started;
+	int pps_keep_last_status;
 
 /*other*/
 	int cp_slave_enable;
@@ -534,8 +538,10 @@ struct oplus_pps_chip {
 	int bcc_exit_curr;
 	int pps_imax;
 	int pps_vmax;
-	u8  int_column[PPS_DUMP_REG_CNT];
-	u8  reg_dump[PPS_DUMP_REG_CNT];
+	int last_plugin_status;
+	int pps_startup_retry_times;
+	u8 int_column[PPS_DUMP_REG_CNT];
+	u8 reg_dump[PPS_DUMP_REG_CNT];
 };
 
 struct oplus_pps_operations {
@@ -631,5 +637,10 @@ bool oplus_pps_bcc_get_temp_range(void);
 void oplus_pps_notify_master_cp_error(void);
 void oplus_pps_notify_slave_cp_error(void);
 void oplus_pps_clear_cp_error(void);
+void oplus_pps_clear_startup_retry(void);
+bool oplus_pps_get_last_charging_status(void);
+int oplus_keep_connect_check(void);
+int oplus_pps_get_last_power(void);
+void oplus_pps_clear_last_charging_status(void);
 #endif /*_OPLUS_PPS_H_*/
 

@@ -82,6 +82,12 @@ bool oplus_chg_check_chip_is_null(void)
 }
 EXPORT_SYMBOL(oplus_chg_check_chip_is_null);
 
+int oplus_chg_check_ui_soc(void)
+{
+	return true;
+}
+EXPORT_SYMBOL(oplus_chg_check_ui_soc);
+
 int oplus_is_vooc_project(void)
 {
 	int vooc_project = 0;
