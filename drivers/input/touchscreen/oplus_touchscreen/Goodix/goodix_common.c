@@ -274,7 +274,7 @@ static ssize_t tp_devices_check_read_func(struct file *file, char __user *page, 
     if(!ts)
         return 0;
 
-	ret = sprintf(pagesize, "%d\n", (int)ts->panel_data.tp_type);
+    ret = sprintf(pagesize, "%d\n", (int)ts->panel_data.tp_type);
     ret = simple_read_from_buffer(page, size, ppos, pagesize, strlen(pagesize));
     return ret;
 }

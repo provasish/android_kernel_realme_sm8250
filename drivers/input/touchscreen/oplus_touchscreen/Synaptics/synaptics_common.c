@@ -683,7 +683,7 @@ static ssize_t proc_touchfilter_control_read(struct file *file, char __user *use
     if (!syn_ops->get_touchfilter_state)
         return 0;
 
-	snprintf(page, PAGESIZE-1, "%u.\n", syn_ops->get_touchfilter_state(ts->chip_data));
+    snprintf(page, PAGESIZE-1, "%u.\n", syn_ops->get_touchfilter_state(ts->chip_data));
     ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
 
     return ret;

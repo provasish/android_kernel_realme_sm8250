@@ -4846,7 +4846,7 @@ restore_adc_config:
 	 /* Restore ADC channel config */
 	if (chg->wa_flags & USBIN_ADC_WA)
 		rc = smblib_write(chg, BATIF_ADC_CHANNEL_EN_REG, reg);
-		if (rc < 0)
+	if (rc < 0)
 			smblib_err(chg, "Couldn't write ADC config rc=%d\n",
 						rc);
 
@@ -6869,7 +6869,7 @@ void smblib_usb_plugin_hard_reset_locked(struct smb_charger *chg)
 			g_oplus_chip->chargerid_volt_got = false;
 			g_oplus_chip->charger_type = POWER_SUPPLY_TYPE_UNKNOWN;
 			cancel_delayed_work(&g_oplus_chip->update_work);
-			oplus_chg_wake_update_work();
+		        oplus_chg_wake_update_work();
 		}
 		chg->pre_current_ma = -1;
 #endif
@@ -7576,7 +7576,7 @@ irqreturn_t usb_source_change_irq_handler(int irq, void *data)
 #ifdef OPLUS_FEATURE_CHG_BASIC
 	if ((bool)(stat & APSD_DTC_STATUS_DONE_BIT))
 		cancel_delayed_work(&g_oplus_chip->update_work);
-		oplus_chg_wake_update_work();
+	oplus_chg_wake_update_work();
 #endif
 
 	smblib_handle_hvdcp_detect_done(chg,
@@ -11394,7 +11394,7 @@ bool oplus_chg_check_pd_svooc_adapater(void)
 }
 EXPORT_SYMBOL(oplus_chg_check_pd_svooc_adapater);
 
-void oplus_set_typec_sinkonly()
+void oplus_set_typec_sinkonly(void)
 {
 	int rc;
 	struct smb_charger *chg = NULL;
@@ -16720,7 +16720,7 @@ void oplus_set_flash_screen_ctrl_by_pcb_version(struct oplus_chg_chip *chip)
 }
 #endif
 extern int oplus_pdo_select(int vbus_mv, int ibus_ma);
-int oplus_chg_set_pd_config()
+int oplus_chg_set_pd_config(void)
 {
 	int ret = 0;
 	struct oplus_chg_chip *chip = g_oplus_chip;
@@ -16813,7 +16813,7 @@ int oplus_chg_enable_qc_detect(void)
 	return ret;
 }
 
-int oplus_chg_set_qc_config()
+int oplus_chg_set_qc_config(void)
 {
 	int ret = 0;
 	struct smb_charger *chg = NULL;
@@ -17178,7 +17178,7 @@ static int smb5_probe(struct platform_device *pdev)
 	struct power_supply *main_psy = NULL;
 	struct power_supply *bms_psy = NULL;
 	union power_supply_propval pval = {0, };
-	static reporting_not_ready_count = 0;
+	static int reporting_not_ready_count = 0;
 #endif
 	struct smb5 *chip;
 	struct smb_charger *chg;
