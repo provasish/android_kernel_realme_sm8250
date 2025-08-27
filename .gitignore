@@ -145,3 +145,5 @@ build.log
 out
 toolchain
 *.zip
+anykernel/
+tc/
