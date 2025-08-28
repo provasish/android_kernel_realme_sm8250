@@ -1654,15 +1654,15 @@ static void cpuset_calc_counter(struct task_struct *task)
 		cgroup_name(cset->mg_src_cgrp, cg_src, MAX_CGROUP_TYPE_NAMELEN);
 		cgroup_name(cset->mg_dst_cgrp, cg_dst, MAX_CGROUP_TYPE_NAMELEN);
 		if (dbg_enable)
-			pr_err("%s: src_cg = %s, id = %d, dst_cg = %s, id = %d, task = %s, pid=%d",
-				__func__, cg_src, cset->mg_src_cgrp->id, cg_dst, cset->mg_dst_cgrp->id, task->comm, task->pid);
+			pr_err("%s: src_cg = %s, id = %llu, dst_cg = %s, id = %llu, task = %s, pid=%d",
+				__func__, cg_src, (unsigned long long)cgroup_id(cset->mg_src_cgrp), cg_dst, (unsigned long long)cgroup_id(cset->mg_dst_cgrp), task->comm, task->pid);
 
-		src_idx = get_cpuset_cgrp_idx(cset->mg_src_cgrp->id);
-		dst_idx = get_cpuset_cgrp_idx(cset->mg_dst_cgrp->id);
+		src_idx = get_cpuset_cgrp_idx(cgroup_id(cset->mg_src_cgrp));
+		dst_idx = get_cpuset_cgrp_idx(cgroup_id(cset->mg_dst_cgrp));
 
 		if (src_idx == -1 || dst_idx == -1) {
-			pr_err("%s: src_cg = %s, id = %d, dst_cg = %s, id = %d, task = %s, pid=%d",
-				__func__, cg_src, cset->mg_src_cgrp->id, cg_dst, cset->mg_dst_cgrp->id, task->comm, task->pid);
+			pr_err("%s: src_cg = %s, id = %llu, dst_cg = %s, id = %llu, task = %s, pid=%d",
+				__func__, cg_src, (unsigned long long)cgroup_id(cset->mg_src_cgrp), cg_dst, (unsigned long long)cgroup_id(cset->mg_dst_cgrp), task->comm, task->pid);
 		}
 
 	} else {
@@ -1736,7 +1736,7 @@ int cpuset_get_cgrp_idx(struct task_struct *task)
 
 	cset = task_css_set(task);
 	if (cset->subsys[cpuset_cgrp_id] && cset->subsys[cpuset_cgrp_id]->cgroup)
-		cgrp_id = cset->subsys[cpuset_cgrp_id]->cgroup->id;
+		cgrp_id = cgroup_id(cset->subsys[cpuset_cgrp_id]->cgroup);
 	else
 		pr_err("%s: cannot get cgrp id", __func__);
 
@@ -1766,7 +1766,7 @@ int cpuset_get_cgrp_idx_locked(struct task_struct *task)
 
 	cset = task_css_set(task);
 	if (cset->subsys[cpuset_cgrp_id] && cset->subsys[cpuset_cgrp_id]->cgroup)
-		cgrp_id = cset->subsys[cpuset_cgrp_id]->cgroup->id;
+		cgrp_id = cgroup_id(cset->subsys[cpuset_cgrp_id]->cgroup);
 	else
 		pr_err("%s: cannot get cgrp id", __func__);
 
